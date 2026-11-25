@@ -1,23 +1,31 @@
 package exit_certificate
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // stepUpload is the explicit-only step that archives the output directory in options.archiveURI.
 const stepUpload = "upload"
+
+// uploadTmpDirName is the directory, inside the archive cache, holding each compressed file while it is
+// uploaded.
+const uploadTmpDirName = ".upload-tmp"
 
 // defaultArchiveCacheDirName is the default options.archiveCacheDir, created next to options.outputDir.
 const defaultArchiveCacheDirName = "archive-cache"
@@ -103,15 +111,18 @@ func selectPreviousRunFiles(m *runarchive.Manifest) ([]string, error) {
 	return files, nil
 }
 
-// runUpload is the `--step upload` entry point: it archives options.outputDir under options.archiveURI.
+// runUpload is the `--step upload` entry point: it archives options.outputDir under
+// <options.archiveURI>/<networkID>/<height>, the run of the certificate's height (zero-padded, see
+// runarchive.Location.Run), every file compressed with zstd.
 // Only a settled run is archived (it is what a later delta or the claimer needs), and the claimer's own L1
 // Info Tree databases are left out. Run every other step on this output dir (pending_claims included)
-// before: the archive is write-once, so files added afterwards can only go to a new prefix.
+// before: the archive is write-once and the prefix is fixed by the certificate height, so files added
+// afterwards are never archived.
 func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	if cfg.Options.ArchiveURI == "" {
-		return fmt.Errorf("step %s requires options.archiveURI (gs://<bucket>/<prefix>)", stepUpload)
+		return fmt.Errorf("step %s requires options.archiveURI (gs://<bucket>/<base prefix>)", stepUpload)
 	}
-	loc, err := runarchive.ParseURI(cfg.Options.ArchiveURI)
+	base, err := runarchive.ParseURI(cfg.Options.ArchiveURI)
 	if err != nil {
 		return fmt.Errorf("options.archiveURI: %w", err)
 	}
@@ -133,6 +144,11 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	if !fileExists(filepath.Join(dir, certFile)) {
 		return fmt.Errorf("%s not found in %s: nothing to archive", certFile, dir)
 	}
+	header, err := runCertificateHeader(cfg, dir, certFile)
+	if err != nil {
+		return err
+	}
+	loc := base.Run(header.NetworkID, header.Height)
 
 	files, err := runarchive.CollectFiles(dir, uploadSkip(cfg))
 	if err != nil {
@@ -143,11 +159,15 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	}
 
 	info := map[string]string{
-		"tool":            "exit_certificate",
-		"toolVersion":     aggkit.Version,
-		"mode":            mode,
-		"l2NetworkId":     strconv.FormatUint(uint64(cfg.L2NetworkID), decimalBase),
-		"certificateHash": wait.CertificateHash.Hex(),
+		"tool":              "exit_certificate",
+		"toolVersion":       aggkit.Version,
+		"mode":              mode,
+		"l2NetworkId":       strconv.FormatUint(uint64(cfg.L2NetworkID), decimalBase),
+		"certificateHash":   wait.CertificateHash.Hex(),
+		"height":            strconv.FormatUint(header.Height, decimalBase),
+		"prevLocalExitRoot": header.PrevLocalExitRoot.Hex(),
+		"newLocalExitRoot":  header.NewLocalExitRoot.Hex(),
+		"createdAt":         time.Now().UTC().Format(time.RFC3339),
 	}
 	if cfg.Options.DeltaMode {
 		var manifest DeltaManifest
@@ -168,8 +188,12 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 			log.Warnf("close archive store: %v", err)
 		}
 	}()
-	log.Infof("Archiving %s (%d files) into %s", dir, len(files), loc)
-	res, err := runarchive.Upload(ctx, store, loc, dir, files, info)
+	tmpDir := filepath.Join(ArchiveCacheDir(cfg.Options), uploadTmpDirName)
+	if err := os.MkdirAll(tmpDir, dirPermissions); err != nil {
+		return fmt.Errorf("create %s: %w", tmpDir, err)
+	}
+	log.Infof("Archiving %s (%d files, certificate height %d) into %s", dir, len(files), header.Height, loc)
+	res, err := runarchive.Upload(ctx, store, loc, dir, files, info, tmpDir)
 	if err != nil {
 		return fmt.Errorf("step %s: %w", stepUpload, err)
 	}
@@ -180,6 +204,78 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	log.Infof("Archived run: %s (manifest sha256 %s). Use it as options.previousRun of the next delta.",
 		loc, res.ManifestSHA256)
 	return nil
+}
+
+// certificateHeader is the head of a certificate JSON file: the fields that identify the run.
+type certificateHeader struct {
+	NetworkID         uint32      `json:"network_id"`
+	Height            uint64      `json:"height"`
+	PrevLocalExitRoot common.Hash `json:"prev_local_exit_root"`
+	NewLocalExitRoot  common.Hash `json:"new_local_exit_root"`
+}
+
+// runCertificateHeader reads the header of the run's certificate and checks it against the config's network
+// and, when present, the height Step H computed (step-h-previous-local-exit-root.json).
+func runCertificateHeader(cfg *Config, dir, certFile string) (*certificateHeader, error) {
+	header, err := readCertificateHeader(filepath.Join(dir, certFile))
+	if err != nil {
+		return nil, err
+	}
+	if header.NetworkID != cfg.L2NetworkID {
+		return nil, fmt.Errorf("%s is for network %d, the config's l2NetworkId is %d",
+			certFile, header.NetworkID, cfg.L2NetworkID)
+	}
+	if header.NewLocalExitRoot == (common.Hash{}) {
+		return nil, fmt.Errorf("%s has no new_local_exit_root", certFile)
+	}
+	var h StepHResult
+	if err := loadOptionalJSON(dir, fileStepHPreviousLocalExitRoot, &h); err != nil {
+		return nil, err
+	}
+	if fileExists(filepath.Join(dir, fileStepHPreviousLocalExitRoot)) && h.Height != header.Height {
+		return nil, fmt.Errorf("%s has height %d but %s says %d", certFile, header.Height,
+			fileStepHPreviousLocalExitRoot, h.Height)
+	}
+	return header, nil
+}
+
+// readCertificateHeader decodes the top-level header fields of a certificate JSON file without loading its
+// bridge exits: they come first in the file, so reading stops as soon as all of them are found (a mainnet
+// certificate is hundreds of MB).
+func readCertificateHeader(path string) (*certificateHeader, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+	dec := json.NewDecoder(bufio.NewReader(f))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil, fmt.Errorf("%s: not a JSON object", path)
+	}
+	var header certificateHeader
+	targets := map[string]any{
+		"network_id": &header.NetworkID, "height": &header.Height,
+		"prev_local_exit_root": &header.PrevLocalExitRoot, "new_local_exit_root": &header.NewLocalExitRoot,
+	}
+	for len(targets) > 0 && dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
+		key, _ := tok.(string)
+		target, ok := targets[key]
+		if !ok {
+			target = &json.RawMessage{}
+		}
+		if err := dec.Decode(target); err != nil {
+			return nil, fmt.Errorf("read %s field %q: %w", path, key, err)
+		}
+		delete(targets, key)
+	}
+	if len(targets) > 0 {
+		return nil, fmt.Errorf("%s: certificate header incomplete (missing %d fields)", path, len(targets))
+	}
+	return &header, nil
 }
 
 // uploadSkip leaves out of the archive the claimer's L1 Info Tree databases and, when it lives inside the

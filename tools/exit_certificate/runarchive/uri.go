@@ -35,6 +35,16 @@ func (l Location) ObjectName(rel string) string {
 	return l.Prefix + "/" + rel
 }
 
+// heightDigits is the zero-padded width of the height segment of a run prefix, so runs sort by height.
+const heightDigits = 10
+
+// Run returns the location of the run of a network's certificate at height, under the base location l:
+// <base>/<networkID>/<height, zero-padded>. One certificate height is one run, so the write-once bucket
+// cannot hold two different runs for the same height.
+func (l Location) Run(networkID uint32, height uint64) Location {
+	return Location{Bucket: l.Bucket, Prefix: fmt.Sprintf("%s/%d/%0*d", l.Prefix, networkID, heightDigits, height)}
+}
+
 // IsURI reports whether s is an archive URI (gs://...) rather than a local path.
 func IsURI(s string) bool {
 	return strings.HasPrefix(s, URIScheme)

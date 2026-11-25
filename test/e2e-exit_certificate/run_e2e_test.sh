@@ -94,19 +94,19 @@ run_quiet "${SCRIPT_DIR}/50-submit_exit_certificate.sh"
 if [[ "${DELTA_MODE}" == "1" ]]; then
     # Every settled run is archived in a GCS emulator and the next delta reads it back from there.
     AGGKIT_TMP="$(cd "${SCRIPT_DIR}/../.." && pwd)/tmp"
-    export ARCHIVE_URI_BASE="gs://let-archive/runs/e2e-$(date +%s)"
+    export ARCHIVE_URI_BASE="gs://let-archive/runs-$(date +%s)"
     export STORAGE_EMULATOR_HOST="127.0.0.1:${ARCHIVE_EMULATOR_PORT:-14443}"
     trap '"${SCRIPT_DIR}/51-archive_run.sh" stop' EXIT
 
     log_info "📦 Archive the first run"
-    run_quiet "${SCRIPT_DIR}/51-archive_run.sh" "${AGGKIT_TMP}/exit_certificate-kurtosis.json" "${ARCHIVE_URI_BASE}-full"
+    run_quiet "${SCRIPT_DIR}/51-archive_run.sh" "${AGGKIT_TMP}/exit_certificate-kurtosis.json" "${ARCHIVE_URI_BASE}"
 
     log_info "🧩 Delta 1: recovery of the first locked contract, on top of the first certificate"
     run_quiet "${SCRIPT_DIR}/52-generate_delta_certificate.sh" 1
 
     log_info "📦 Archive delta 1"
     run_quiet "${SCRIPT_DIR}/51-archive_run.sh" "${AGGKIT_TMP}/exit_certificate-kurtosis-delta-1.json" \
-        "${ARCHIVE_URI_BASE}-delta-1"
+        "${ARCHIVE_URI_BASE}"
 
     log_info "🧩 Delta 2: recovery of the second locked contract, chained on delta 1"
     run_quiet "${SCRIPT_DIR}/52-generate_delta_certificate.sh" 2

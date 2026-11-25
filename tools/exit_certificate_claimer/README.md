@@ -129,7 +129,8 @@ the output directory, the claimer can load the run data from there:
 On startup, before anything else, the claimer downloads into `<runDataDir>/<bucket>/<prefix>/` only what it
 serves — the certificate (`exit-certificate-full.json` for a delta run, else `exit-certificate-signed.json`),
 `step-g-l2bridgesyncerlite.sqlite`, `step-wait-result.json` and, when archived,
-`step-pending-l2-bridges.json` — and checks each file's size, SHA-256 and CRC32C against the run's
+`step-pending-l2-bridges.json` — decompresses them (they are stored as `.zst`) and checks each object's size
+and CRC32C and each file's size and SHA-256 against the run's
 `archive-manifest.json`. A prefix without a manifest (incomplete upload) is refused. On a restart the files
 already there are re-verified and only missing or different ones are downloaded again.
 
@@ -140,7 +141,7 @@ pod in a cluster (that identity must be granted `objectViewer` on the bucket), o
 
 ```bash
 ./exit-certificate-claimer --exit-certificate-config parameters.toml \
-  --run-source gs://polygonlabs-zkevm-prod-let-archive/runs/2026-11-24-delta-1
+  --run-source gs://polygonlabs-zkevm-prod-let-archive/runs/1/0000000005   # network 1, certificate height 5
 ```
 
 ## HTTP API
@@ -164,7 +165,7 @@ CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_clai
 
 # ...serving the run archived in a GCS bucket instead of the files of its output dir:
 ./exit-certificate-claimer --exit-certificate-config tools/exit_certificate/parameters.toml \
-  --run-source gs://<bucket>/runs/<YYYY-MM-DD>-<label>
+  --run-source gs://<bucket>/runs/<networkID>/<height, 10 digits>
 
 # override the bind host/port from the command line (works in both modes):
 ./exit-certificate-claimer --config config.toml --address 127.0.0.1 --port 9090

@@ -18,9 +18,10 @@ import (
 // Objects is the content behind a store built by NewStore: object name → bytes, plus the names created
 // through the store, in order.
 type Objects struct {
-	mu      sync.Mutex
-	Data    map[string][]byte
-	Creates []string
+	mu       sync.Mutex
+	Data     map[string][]byte
+	Metadata map[string]map[string]string
+	Creates  []string
 }
 
 // Get returns the content of an object.
@@ -38,6 +39,9 @@ func NewStore(t *testing.T, objs *Objects) *mocks.ObjectStore {
 	if objs.Data == nil {
 		objs.Data = map[string][]byte{}
 	}
+	if objs.Metadata == nil {
+		objs.Metadata = map[string]map[string]string{}
+	}
 	store := mocks.NewObjectStore(t)
 	store.EXPECT().Attrs(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, name string) (runarchive.ObjectAttrs, error) {
@@ -45,7 +49,9 @@ func NewStore(t *testing.T, objs *Objects) *mocks.ObjectStore {
 			if !ok {
 				return runarchive.ObjectAttrs{}, runarchive.ErrObjectNotExist
 			}
-			return runarchive.ObjectAttrs{Size: int64(len(d)), CRC32C: CRC32C(d)}, nil
+			objs.mu.Lock()
+			defer objs.mu.Unlock()
+			return runarchive.ObjectAttrs{Size: int64(len(d)), CRC32C: CRC32C(d), Metadata: objs.Metadata[name]}, nil
 		}).Maybe()
 	store.EXPECT().NewReader(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, name string) (io.ReadCloser, error) {
@@ -55,8 +61,8 @@ func NewStore(t *testing.T, objs *Objects) *mocks.ObjectStore {
 			}
 			return io.NopCloser(bytes.NewReader(d)), nil
 		}).Maybe()
-	store.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, name string, r io.Reader, crc uint32) error {
+	store.EXPECT().Create(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, name string, r io.Reader, crc uint32, metadata map[string]string) error {
 			d, err := io.ReadAll(r)
 			if err != nil {
 				return err
@@ -70,6 +76,7 @@ func NewStore(t *testing.T, objs *Objects) *mocks.ObjectStore {
 				return runarchive.ErrObjectExists
 			}
 			objs.Data[name] = d
+			objs.Metadata[name] = metadata
 			objs.Creates = append(objs.Creates, name)
 			return nil
 		}).Maybe()

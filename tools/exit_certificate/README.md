@@ -136,7 +136,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run, or its archive `gs://<bucket>/<prefix>` (see [Archiving runs](#archiving-runs-in-a-gcs-bucket)). Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
 | `deltaExitsFile` | `""` | Required with `deltaMode`: JSON file with the new exits (format in [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate)). Relative paths resolve from the config file directory. |
 | `recoveriesPath` | `""` | Only with `deltaMode`, input of `--step recoveries`: a directory (searched recursively), a `.tgz` of the [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) or a `recovery.json` with already verified recoveries. See [Recoveries step](#recoveries-step--from-verified-recoveries-to-delta-exits). Relative paths resolve from the config file directory. |
-| `archiveURI` | `""` | Where `--step upload` archives `outputDir`: `gs://<bucket>/<prefix>`, one new prefix per run (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs/2026-11-24-delta-1`). Only the upload step needs it. See [Archiving runs](#archiving-runs-in-a-gcs-bucket). |
+| `archiveURI` | `""` | Archive base for `--step upload`, `gs://<bucket>/<prefix>` (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs`): the run goes to `<archiveURI>/<networkID>/<height>`, height taken from the certificate. Only the upload step needs it. See [Archiving runs](#archiving-runs-in-a-gcs-bucket). |
 | `archiveCacheDir` | `"archive-cache"` next to `outputDir` | Base directory archived runs are downloaded into (`<archiveCacheDir>/<bucket>/<prefix>/`): the `gs://` `previousRun` of a delta, and the claimer's `--run-source`. Relative paths resolve from the config file directory. |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
@@ -639,29 +639,37 @@ only `roles/storage.objectViewer`.
 
 ### Layout
 
-One prefix per run, e.g. `runs/<YYYY-MM-DD>-<label>/`, holding the files of the output directory under their
-relative paths plus `archive-manifest.json`:
+One prefix per run, named after the **certificate it settled**: `<archiveURI>/<networkID>/<height>/`, the
+height zero-padded to 10 digits so runs sort by height. Each file of the output directory is stored
+**compressed with zstd** as `<relative path>.zst`; only `archive-manifest.json` is plain JSON:
 
 ```text
 gs://polygonlabs-zkevm-prod-let-archive/
-└── runs/
-    ├── 2026-07-21-full/
-    │   ├── archive-manifest.json
-    │   ├── exit-certificate-signed.json
-    │   ├── step-g-l2bridgesyncerlite.sqlite
-    │   ├── step-wait-result.json
-    │   └── ...                              (every other file of the output dir)
-    └── 2026-11-24-delta-1/
-        ├── archive-manifest.json
-        ├── exit-certificate-full.json
-        ├── delta-manifest.json
-        ├── recoveries/...
-        └── ...
+└── runs/                                   ← options.archiveURI (the base)
+    └── 1/                                  ← network ID
+        ├── 0000000004/                     ← the full run (certificate height 4)
+        │   ├── archive-manifest.json
+        │   ├── exit-certificate-signed.json.zst
+        │   ├── step-g-l2bridgesyncerlite.sqlite.zst
+        │   ├── step-wait-result.json.zst
+        │   └── ...                         (every other file of the output dir, .zst)
+        └── 0000000005/                     ← delta 1 (height 5)
+            ├── archive-manifest.json
+            ├── exit-certificate-full.json.zst
+            ├── delta-manifest.json.zst
+            ├── recoveries/...zst
+            └── ...
 ```
 
-`archive-manifest.json` lists every archived file with its size, SHA-256 and CRC32C, plus some run info
-(tool version, `full`/`delta`, network ID, certificate hash, and for a delta the archive of its previous run).
-It is uploaded **last**: a prefix without it is an incomplete upload and is never read.
+One height is one run: the bucket is write-once, so a second, different run for the same height cannot be
+uploaded. After the sunset every certificate of the network is one of ours, so the heights are consecutive and
+the run that follows height `h` is always at `h+1`.
+
+`archive-manifest.json` has `"compression": "zstd"` and lists every file with the size and SHA-256 of the
+**original** file plus the name, size and CRC32C of its compressed object. Its `info` records the run: tool
+version, `full`/`delta`, network ID, `height`, `prevLocalExitRoot`, `newLocalExitRoot`, certificate hash,
+`createdAt`, and for a delta the archive of its previous run. It is uploaded **last**: a prefix without it is
+an incomplete upload and is never read.
 
 ### Upload — `--step upload`
 
@@ -670,22 +678,29 @@ It is uploaded **last**: a prefix without it is an incomplete upload and is neve
 ./target/exit_certificate --config parameters.toml --step upload
 ```
 
-Set `options.archiveURI` to a **new** prefix. The step:
+Set `options.archiveURI` to the archive **base** (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs`). The
+step:
 
 - archives only a **settled** run (`step-wait-result.json` with status `Settled`) that has its certificate
   (`exit-certificate-signed.json`, or `exit-certificate-full.json` in delta mode);
+- takes the run prefix from that certificate's header (`network_id`, `height`), checked against `l2NetworkId`
+  and against the height Step H wrote (`step-h-previous-local-exit-root.json`);
 - uploads every file of `outputDir` except the claimer's L1 Info Tree DBs (`L1InfoTreeSync.sqlite`,
   `l1infotree_multidownloader.sqlite`), SQLite side files (`-wal`/`-shm`/`-journal`) and `archiveCacheDir` if
   it is inside `outputDir`. Each SQLite DB is checkpointed first, so its main file is complete (it fails if a
   process — e.g. a running claimer — still holds it busy);
-- never overwrites: each object is created with a "does not exist" precondition. An object already there with
-  the same size and CRC32C is kept, so **re-running after a failed upload resumes it**; one with different
-  content is an error. If the prefix already has a manifest, the step succeeds without uploading when it lists
-  the same files, and fails otherwise (use a new prefix);
+- compresses each file into `<archiveCacheDir>/.upload-tmp/` before uploading it (the store checks the
+  compressed CRC32C, which must be known up front), so that directory needs room for the largest compressed
+  file. As a reference, the Cardona exit-tree DB goes from 734 MB to 229 MB;
+- never overwrites: each object is created with a "does not exist" precondition and carries the original
+  file's SHA-256 as metadata (`source-sha256`). An object already there for the same original file is kept,
+  so **re-running after a failed upload resumes it**; one made from another file is an error. If the prefix
+  already has a manifest, the step succeeds without uploading when it lists the same files, and fails
+  otherwise (another run already settled that height);
 - writes a local copy of the manifest (`archive-manifest.json`) in `outputDir`.
 
 Upload is the last step of a run: the archive cannot be changed, so files written afterwards (e.g. a late
-`--step pending_claims`, which warns about it) can only go to a new prefix.
+`--step pending_claims`, which warns about it) are not archived.
 
 ### Delta from an archived run
 
@@ -694,17 +709,17 @@ Set the delta's `options.previousRun` to the archive of the previous run:
 ```toml
 [options]
 deltaMode = true
-previousRun = "gs://polygonlabs-zkevm-prod-let-archive/runs/2026-07-21-full"
+previousRun = "gs://polygonlabs-zkevm-prod-let-archive/runs/1/0000000004"   # the run of height 4
 deltaExitsFile = "./delta-exits.json"
 outputDir = "./output-delta-1"
-archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs/2026-11-24-delta-1"   # for --step upload
+archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs"   # --step upload puts this delta at runs/1/0000000005
 ```
 
 `--step all` and `--step recoveries` download what a delta reads — the certificate (full, else signed),
 `step-wait-result.json`, `step-g-l2bridgesyncerlite.sqlite`, `delta-manifest.json`, the balance state
 (`step-0-lbt.json`, `step-c-sc-locked-values.json`, `step-f-checks.json`) and `recoveries/` — into
-`<archiveCacheDir>/<bucket>/<prefix>/`, verify each file's size, SHA-256 and CRC32C against the manifest, and
-then run exactly as with a local directory. Files already in the cache with the right content are not
+`<archiveCacheDir>/<bucket>/<prefix>/`, decompress them while checking each object's size and CRC32C and each
+file's size and SHA-256 against the manifest, and then run exactly as with a local directory. Files already in the cache with the right content are not
 downloaded again. The cache directory belongs to that one archived run: a different manifest or a file the
 manifest does not list there is an error (remove the directory). The delta records the archive URI and its
 manifest SHA-256 in `delta-manifest.json`. Read access to the bucket is enough.

@@ -81,17 +81,17 @@ func (_c *ObjectStore_Attrs_Call) RunAndReturn(run func(context.Context, string)
 	return _c
 }
 
-// Create provides a mock function with given fields: ctx, name, r, crc32c
-func (_m *ObjectStore) Create(ctx context.Context, name string, r io.Reader, crc32c uint32) error {
-	ret := _m.Called(ctx, name, r, crc32c)
+// Create provides a mock function with given fields: ctx, name, r, crc32c, metadata
+func (_m *ObjectStore) Create(ctx context.Context, name string, r io.Reader, crc32c uint32, metadata map[string]string) error {
+	ret := _m.Called(ctx, name, r, crc32c, metadata)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, io.Reader, uint32) error); ok {
-		r0 = rf(ctx, name, r, crc32c)
+	if rf, ok := ret.Get(0).(func(context.Context, string, io.Reader, uint32, map[string]string) error); ok {
+		r0 = rf(ctx, name, r, crc32c, metadata)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -109,13 +109,14 @@ type ObjectStore_Create_Call struct {
 //   - name string
 //   - r io.Reader
 //   - crc32c uint32
-func (_e *ObjectStore_Expecter) Create(ctx interface{}, name interface{}, r interface{}, crc32c interface{}) *ObjectStore_Create_Call {
-	return &ObjectStore_Create_Call{Call: _e.mock.On("Create", ctx, name, r, crc32c)}
+//   - metadata map[string]string
+func (_e *ObjectStore_Expecter) Create(ctx interface{}, name interface{}, r interface{}, crc32c interface{}, metadata interface{}) *ObjectStore_Create_Call {
+	return &ObjectStore_Create_Call{Call: _e.mock.On("Create", ctx, name, r, crc32c, metadata)}
 }
 
-func (_c *ObjectStore_Create_Call) Run(run func(ctx context.Context, name string, r io.Reader, crc32c uint32)) *ObjectStore_Create_Call {
+func (_c *ObjectStore_Create_Call) Run(run func(ctx context.Context, name string, r io.Reader, crc32c uint32, metadata map[string]string)) *ObjectStore_Create_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(io.Reader), args[3].(uint32))
+		run(args[0].(context.Context), args[1].(string), args[2].(io.Reader), args[3].(uint32), args[4].(map[string]string))
 	})
 	return _c
 }
@@ -125,7 +126,7 @@ func (_c *ObjectStore_Create_Call) Return(_a0 error) *ObjectStore_Create_Call {
 	return _c
 }
 
-func (_c *ObjectStore_Create_Call) RunAndReturn(run func(context.Context, string, io.Reader, uint32) error) *ObjectStore_Create_Call {
+func (_c *ObjectStore_Create_Call) RunAndReturn(run func(context.Context, string, io.Reader, uint32, map[string]string) error) *ObjectStore_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }

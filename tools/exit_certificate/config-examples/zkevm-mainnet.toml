@@ -42,9 +42,9 @@ concurrencyLimit = 200
 rpcBatchSize = 99
 rpcDelayMs = 10
 outputDir = "./output-mainnet"
-# OPTIONAL — where --step upload archives outputDir once the certificate is settled (write-once bucket,
-# a new prefix per run). See "Archiving runs in a GCS bucket" in ../README.md.
-#archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs/<YYYY-MM-DD>-<label>"
+# OPTIONAL — archive base for --step upload once the certificate is settled (write-once bucket): the run
+# goes to <archiveURI>/<networkID>/<height>. See "Archiving runs in a GCS bucket" in ../README.md.
+#archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs"
 l1StartBlock = 22431675
 l2StartBlock = 0
 ignoreGenesisBalance = false

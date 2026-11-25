@@ -945,8 +945,8 @@ func runSinglePending(ctx context.Context, cfg *Config, dir string) error {
 		return err
 	}
 	if fileExists(filepath.Join(dir, runarchive.ManifestFile)) {
-		log.Warnf("⚠️  %s was already archived (--step %s): %s is NOT in that archive, which cannot be changed; "+
-			"run pending_claims before uploading, or upload this output dir to a new prefix",
+		log.Warnf("⚠️  %s was already archived (--step %s): %s is NOT in that archive, which cannot be changed "+
+			"(the run's prefix is fixed by its certificate height); run pending_claims before uploading",
 			dir, stepUpload, FileStepPendingBridges)
 	}
 	return saveJSON(dir, FileStepPendingBridges, pending)

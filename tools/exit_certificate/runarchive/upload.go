@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
+	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -98,15 +100,21 @@ type UploadResult struct {
 	AlreadyComplete bool
 }
 
-// Upload archives the files (relative to dir, see CollectFiles) under loc and uploads the manifest last.
-// It never overwrites: an object that already exists with the same size and CRC32C is kept (so a retry
-// after a partial upload resumes), one with different content fails with ErrObjectConflict. If loc already
-// holds a complete run, Upload succeeds without uploading when it lists the same files and fails with
-// ErrRunExists otherwise.
+// Upload archives the files (relative to dir, see CollectFiles) under loc: each one compressed with zstd as
+// <path>.zst, then the manifest (uncompressed) last. tmpDir holds each compressed file while it is uploaded
+// (empty: the system temp dir); it needs room for the largest one.
+//
+// It never overwrites. An object that already exists for a file is kept when its metadata records the same
+// original SHA-256 (so a retry after a partial upload resumes), otherwise Upload fails with
+// ErrObjectConflict. If loc already holds a complete run, Upload succeeds without uploading when it lists
+// the same files and fails with ErrRunExists otherwise.
 func Upload(
 	ctx context.Context, store ObjectStore, loc Location, dir string, files []string, info map[string]string,
+	tmpDir string,
 ) (*UploadResult, error) {
-	manifest := &Manifest{Version: ManifestVersion, Info: info, Files: make([]FileEntry, 0, len(files))}
+	manifest := &Manifest{
+		Version: ManifestVersion, Compression: CompressionZstd, Info: info, Files: make([]FileEntry, 0, len(files)),
+	}
 	for _, rel := range files {
 		if err := validateRelPath(rel); err != nil {
 			return nil, err
@@ -124,8 +132,8 @@ func Upload(
 	}
 
 	result := &UploadResult{Manifest: manifest}
-	for _, entry := range manifest.Files {
-		created, err := uploadFile(ctx, store, loc, dir, entry)
+	for i := range manifest.Files {
+		created, err := uploadFile(ctx, store, loc, dir, tmpDir, &manifest.Files[i])
 		if err != nil {
 			return nil, err
 		}
@@ -140,7 +148,8 @@ func Upload(
 	if err != nil {
 		return nil, err
 	}
-	if err := store.Create(ctx, loc.ObjectName(ManifestFile), bytes.NewReader(data), checksum(data)); err != nil {
+	err = store.Create(ctx, loc.ObjectName(ManifestFile), bytes.NewReader(data), checksum(data), nil)
+	if err != nil {
 		if errors.Is(err, ErrObjectExists) { // another upload completed meanwhile: accept it only if identical
 			return checkExistingRun(ctx, store, loc, manifest)
 		}
@@ -162,27 +171,36 @@ func checkExistingRun(ctx context.Context, store ObjectStore, loc Location, mani
 		return nil, err
 	}
 	if !existing.sameFiles(manifest) {
-		return nil, fmt.Errorf("%s already has a %s listing other files: %w (use a new prefix)",
-			loc, ManifestFile, ErrRunExists)
+		return nil, fmt.Errorf("%s already has a %s listing other files: %w", loc, ManifestFile, ErrRunExists)
 	}
 	log.Infof("archive: %s already holds this run (same %d files), nothing to upload", loc, len(manifest.Files))
 	return &UploadResult{Manifest: existing, ManifestSHA256: sha256Hex(raw), AlreadyComplete: true}, nil
 }
 
-// uploadFile uploads one file unless the object already exists with the same content. It reports whether
-// the object was created.
-func uploadFile(ctx context.Context, store ObjectStore, loc Location, dir string, entry FileEntry) (bool, error) {
-	name := loc.ObjectName(entry.Path)
+// uploadFile uploads the compressed object of one file unless it already exists for the same original
+// content, and fills the entry's object size and CRC32C. It reports whether the object was created.
+func uploadFile(
+	ctx context.Context, store ObjectStore, loc Location, dir, tmpDir string, entry *FileEntry,
+) (bool, error) {
+	name := loc.ObjectName(entry.Object)
 	if reused, err := matchExisting(ctx, store, name, entry); err != nil || reused {
 		return false, err
 	}
-	f, err := os.Open(filepath.Join(dir, filepath.FromSlash(entry.Path)))
+
+	log.Infof("archive: compressing %s (%d bytes)", entry.Path, entry.Size)
+	tmp, size, crc, err := compressToTemp(filepath.Join(dir, filepath.FromSlash(entry.Path)), tmpDir)
 	if err != nil {
-		return false, fmt.Errorf("open %s: %w", entry.Path, err)
+		return false, fmt.Errorf("compress %s: %w", entry.Path, err)
+	}
+	defer os.Remove(tmp)
+	f, err := os.Open(tmp)
+	if err != nil {
+		return false, fmt.Errorf("open %s: %w", tmp, err)
 	}
 	defer f.Close()
-	log.Infof("archive: uploading %s (%d bytes)", entry.Path, entry.Size)
-	err = store.Create(ctx, name, f, entry.CRC32C)
+
+	log.Infof("archive: uploading %s (%d bytes compressed)", entry.Object, size)
+	err = store.Create(ctx, name, f, crc, map[string]string{MetadataSourceSHA256: entry.SHA256})
 	if errors.Is(err, ErrObjectExists) { // created by a concurrent upload: same rule as before
 		reused, mErr := matchExisting(ctx, store, name, entry)
 		if mErr != nil {
@@ -195,12 +213,14 @@ func uploadFile(ctx context.Context, store ObjectStore, loc Location, dir string
 	if err != nil {
 		return false, err
 	}
+	entry.ObjectSize, entry.ObjectCRC32C = size, crc
 	return true, nil
 }
 
-// matchExisting reports whether the object exists with the entry's size and CRC32C; an object with other
-// content is an ErrObjectConflict.
-func matchExisting(ctx context.Context, store ObjectStore, name string, entry FileEntry) (bool, error) {
+// matchExisting reports whether the object of the entry already exists for the same original file (its
+// MetadataSourceSHA256), filling the entry's object size and CRC32C from it. An object made from another
+// file is an ErrObjectConflict.
+func matchExisting(ctx context.Context, store ObjectStore, name string, entry *FileEntry) (bool, error) {
 	attrs, err := store.Attrs(ctx, name)
 	if errors.Is(err, ErrObjectNotExist) {
 		return false, nil
@@ -208,12 +228,49 @@ func matchExisting(ctx context.Context, store ObjectStore, name string, entry Fi
 	if err != nil {
 		return false, err
 	}
-	if attrs.Size != entry.Size || attrs.CRC32C != entry.CRC32C {
-		return false, fmt.Errorf("%s (size %d, crc32c %d; local file: size %d, crc32c %d): %w",
-			name, attrs.Size, attrs.CRC32C, entry.Size, entry.CRC32C, ErrObjectConflict)
+	if got := attrs.Metadata[MetadataSourceSHA256]; got != entry.SHA256 {
+		return false, fmt.Errorf("%s was made from a file with sha256 %q, the local file has %s: %w",
+			name, got, entry.SHA256, ErrObjectConflict)
 	}
-	log.Infof("archive: %s already uploaded, skipping", entry.Path)
+	entry.ObjectSize, entry.ObjectCRC32C = attrs.Size, attrs.CRC32C
+	log.Infof("archive: %s already uploaded, skipping", entry.Object)
 	return true, nil
+}
+
+// compressToTemp compresses the file at src with zstd into a new temp file in tmpDir and returns its path,
+// size and CRC32C. The checksum must be known before the upload starts: the store checks it.
+func compressToTemp(src, tmpDir string) (string, int64, uint32, error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	defer in.Close()
+	out, err := os.CreateTemp(tmpDir, "archive-*"+objectSuffix)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	fail := func(err error) (string, int64, uint32, error) {
+		_ = out.Close()
+		_ = os.Remove(out.Name())
+		return "", 0, 0, err
+	}
+	crc := crc32.New(crc32cTable)
+	counter := &countingWriter{}
+	enc, err := zstd.NewWriter(io.MultiWriter(out, crc, counter))
+	if err != nil {
+		return fail(err)
+	}
+	if _, err := io.Copy(enc, in); err != nil {
+		_ = enc.Close()
+		return fail(err)
+	}
+	if err := enc.Close(); err != nil {
+		return fail(err)
+	}
+	if err := out.Close(); err != nil {
+		return fail(err)
+	}
+	return out.Name(), counter.n, crc.Sum32(), nil
 }
 
 // readManifest reads and validates the manifest of loc, returning it with its raw bytes.

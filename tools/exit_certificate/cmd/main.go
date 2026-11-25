@@ -67,9 +67,10 @@ Pipeline steps (run in order by default):
          step-g-new-local-exit-root.json (run step g first). Requires l1RpcUrl.
 
   UPLOAD Standalone step (--step upload, not part of "all" or of any range). Archives
-         the output dir of a settled run in options.archiveURI (gs://<bucket>/<prefix>,
-         a write-once GCS bucket) with a manifest of SHA-256/CRC32C checksums, never
-         overwriting; re-running resumes a partial upload. A delta's options.previousRun
+         the output dir of a settled run under options.archiveURI (gs://<bucket>/<prefix>,
+         a write-once GCS bucket) at <networkID>/<certificate height>, every file
+         compressed with zstd, plus a manifest of checksums; never overwriting,
+         re-running resumes a partial upload. A delta's options.previousRun
          can then be that URI: the run is downloaded and verified before use.
 
   RECOVERIES

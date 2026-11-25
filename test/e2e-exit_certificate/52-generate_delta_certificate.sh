@@ -23,9 +23,9 @@
 #   5. verifies the chaining: height, prev/new local exit root, the delta certificate carries only the
 #      new exit, and exit-certificate-full.json carries every exit (previous + new).
 #
-# With ARCHIVE_URI_BASE set (e.g. gs://let-archive/runs/e2e), the previous run is read from its archive
-# (51-archive_run.sh uploaded it as <base>-full for the first run, <base>-delta-N for delta N) instead of its
-# local output dir: the tool downloads and verifies it (options.previousRun = gs://...).
+# With ARCHIVE_URI_BASE set (e.g. gs://let-archive/runs), the previous run is read from its archive
+# (51-archive_run.sh uploaded it to <base>/<networkID>/<height>) instead of its local output dir: the tool
+# downloads and verifies it (options.previousRun = gs://...).
 #
 # Needs the kit (it is not part of this repo): KIT_DIR (default: ../zkevm-proof-of-ownership-kit next to this
 # repo) with docker, cast and jq. The fork the kit starts reads the L2 over RPC, which is frozen (30-stop_sequencer.sh)
@@ -194,7 +194,7 @@ fi
 
 PREVIOUS_RUN="$PREV_OUTPUT_REL"
 if [[ -n "${ARCHIVE_URI_BASE:-}" ]]; then
-    if [[ "$INDEX" -eq 1 ]]; then PREVIOUS_RUN="${ARCHIVE_URI_BASE}-full"; else PREVIOUS_RUN="${ARCHIVE_URI_BASE}-delta-$((INDEX - 1))"; fi
+    PREVIOUS_RUN="${ARCHIVE_URI_BASE%/}/$(jq -r '.network_id' "$PREV_CERT")/$(printf '%010d' "$(jq -r '.height' "$PREV_CERT")")"
     log_info "📥 previousRun from the archive: $PREVIOUS_RUN"
 fi
 jq --arg prev "$PREVIOUS_RUN" --arg exits "$DELTA_EXITS_REL" --arg out "$DELTA_OUTPUT_REL" --arg cases "$CASES_REL" '

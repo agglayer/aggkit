@@ -66,9 +66,10 @@ rpcDelayMs = 10
 # directory. Default: "output".
 outputDir = "./output"
 
-# OPTIONAL — archive of this run for --step upload: gs://<bucket>/<prefix>, a new prefix per run.
-# Default: "" (only the upload step needs it). With deltaMode, previousRun can also be such a URI.
-#archiveURI = "gs://polygonlabs-zkevm-bali-let-archive/runs/2026-11-24-full"
+# OPTIONAL — archive base for --step upload: the run goes to <archiveURI>/<networkID>/<height> (from the
+# certificate), each file compressed with zstd. Default: "" (only the upload step needs it). With deltaMode,
+# previousRun can be the URI of an archived run, e.g. gs://<bucket>/runs/1/0000000004.
+#archiveURI = "gs://polygonlabs-zkevm-bali-let-archive/runs"
 
 # OPTIONAL — where archived runs are downloaded (gs:// previousRun, claimer --run-source).
 # Default: "archive-cache" next to outputDir.

@@ -138,9 +138,9 @@ type Options struct {
 	// archive URI: the URI and the SHA-256 of its manifest (recorded in the delta manifest).
 	PreviousRunArchive               string `json:"-"`
 	PreviousRunArchiveManifestSHA256 string `json:"-"`
-	// ArchiveURI is where --step upload archives OutputDir: gs://<bucket>/<prefix>, a prefix of its own
-	// per run (e.g. gs://polygonlabs-zkevm-prod-let-archive/runs/2026-11-24-delta-1). Optional; only the
-	// upload step needs it.
+	// ArchiveURI is the archive base --step upload uses, gs://<bucket>/<prefix> (e.g.
+	// gs://polygonlabs-zkevm-prod-let-archive/runs): the run goes to <ArchiveURI>/<networkID>/<height>,
+	// zero-padded, from the certificate it settled. Optional; only the upload step needs it.
 	ArchiveURI string `json:"archiveURI"`
 	// ArchiveCacheDir is the base directory archived runs are downloaded into (one subdirectory per
 	// bucket/prefix). Defaults to "archive-cache" next to OutputDir. Relative paths resolve from the

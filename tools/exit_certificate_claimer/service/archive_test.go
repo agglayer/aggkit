@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testRunSource = "gs://let-archive/runs/2026-11-24-delta-1"
+const testRunSource = "gs://let-archive/runs/1/0000000005"
 
 func TestLoadConfigRunSource(t *testing.T) {
 	t.Parallel()
@@ -60,7 +60,7 @@ func archiveRun(t *testing.T, files map[string]string) *archivetest.Objects {
 	loc, err := runarchive.ParseURI(testRunSource)
 	require.NoError(t, err)
 	objs := &archivetest.Objects{}
-	_, err = runarchive.Upload(context.Background(), archivetest.NewStore(t, objs), loc, dir, rels, nil)
+	_, err = runarchive.Upload(context.Background(), archivetest.NewStore(t, objs), loc, dir, rels, nil, t.TempDir())
 	require.NoError(t, err)
 	return objs
 }

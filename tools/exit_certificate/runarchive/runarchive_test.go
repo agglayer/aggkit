@@ -2,16 +2,19 @@ package runarchive_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive/archivetest"
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive/mocks"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,6 +60,10 @@ func TestParseURI(t *testing.T) {
 		require.Error(t, err, bad)
 	}
 	require.True(t, runarchive.IsURI("gs://b/p"))
+
+	base, err := runarchive.ParseURI("gs://let-archive/runs")
+	require.NoError(t, err)
+	require.Equal(t, "gs://let-archive/runs/1/0000000042", base.Run(1, 42).String())
 	require.False(t, runarchive.IsURI("./output"))
 }
 
@@ -86,7 +93,8 @@ func upload(t *testing.T, store runarchive.ObjectStore, dir string) (*runarchive
 	t.Helper()
 	files, err := runarchive.CollectFiles(dir, nil)
 	require.NoError(t, err)
-	return runarchive.Upload(context.Background(), store, testLoc, dir, files, map[string]string{"mode": "full"})
+	return runarchive.Upload(context.Background(), store, testLoc, dir, files, map[string]string{"mode": "full"},
+		t.TempDir())
 }
 
 func TestUpload(t *testing.T) {
@@ -98,11 +106,22 @@ func TestUpload(t *testing.T) {
 	require.False(t, res.AlreadyComplete)
 	// the manifest goes last, so a prefix without it is an incomplete upload
 	require.Equal(t, testLoc.ObjectName(runarchive.ManifestFile), objs.Creates[len(objs.Creates)-1])
-	require.Equal(t, []byte("sqlite-content"), objs.Data[testLoc.ObjectName("step-g-l2bridgesyncerlite.sqlite")])
+	// Every file is stored compressed as <path>.zst, with the original's sha256 in its metadata.
+	object := testLoc.ObjectName("step-g-l2bridgesyncerlite.sqlite.zst")
+	require.Equal(t, []byte("sqlite-content"), unzstd(t, objs.Data[object]))
+	require.Equal(t, sha256Hex([]byte("sqlite-content")), objs.Metadata[object][runarchive.MetadataSourceSHA256])
+	require.NotContains(t, objs.Data, testLoc.ObjectName("step-g-l2bridgesyncerlite.sqlite"))
 
 	var m runarchive.Manifest
 	require.NoError(t, json.Unmarshal(objs.Data[testLoc.ObjectName(runarchive.ManifestFile)], &m))
 	require.Equal(t, runarchive.ManifestVersion, m.Version)
+	require.Equal(t, runarchive.CompressionZstd, m.Compression)
+	entry, ok := m.File("step-g-l2bridgesyncerlite.sqlite")
+	require.True(t, ok)
+	require.Equal(t, "step-g-l2bridgesyncerlite.sqlite.zst", entry.Object)
+	require.Equal(t, int64(len("sqlite-content")), entry.Size)
+	require.Equal(t, int64(len(objs.Data[object])), entry.ObjectSize)
+	require.Equal(t, archivetest.CRC32C(objs.Data[object]), entry.ObjectCRC32C)
 	require.Equal(t, "full", m.Info["mode"])
 	require.Len(t, m.Files, 3)
 
@@ -121,11 +140,21 @@ func TestUpload(t *testing.T) {
 	})
 }
 
+// seeded returns objects holding one object for exit-certificate-signed.json, made from content.
+func seeded(t *testing.T, content string) *objects {
+	t.Helper()
+	name := testLoc.ObjectName("exit-certificate-signed.json.zst")
+	return &objects{
+		Data:     map[string][]byte{name: zstdBytes(t, []byte(content))},
+		Metadata: map[string]map[string]string{name: {runarchive.MetadataSourceSHA256: sha256Hex([]byte(content))}},
+	}
+}
+
 func TestUploadResumesPartialUpload(t *testing.T) {
 	dir := runDir(t)
-	objs := &objects{Data: map[string][]byte{
-		testLoc.ObjectName("exit-certificate-signed.json"): []byte(`{"height":1}`),
-	}}
+	// An object of an earlier, interrupted upload of the same file is kept even if compressing it again
+	// gave other bytes: it is matched by the original's sha256.
+	objs := seeded(t, `{"height":1}`)
 	res, err := upload(t, newStore(t, objs), dir)
 	require.NoError(t, err)
 	require.Equal(t, 2, res.Uploaded)
@@ -135,9 +164,7 @@ func TestUploadResumesPartialUpload(t *testing.T) {
 
 func TestUploadConflict(t *testing.T) {
 	dir := runDir(t)
-	objs := &objects{Data: map[string][]byte{
-		testLoc.ObjectName("exit-certificate-signed.json"): []byte(`{"height":999}`),
-	}}
+	objs := seeded(t, `{"height":999}`)
 	_, err := upload(t, newStore(t, objs), dir)
 	require.ErrorIs(t, err, runarchive.ErrObjectConflict)
 	require.NotContains(t, objs.Data, testLoc.ObjectName(runarchive.ManifestFile))
@@ -145,7 +172,7 @@ func TestUploadConflict(t *testing.T) {
 
 func TestUploadRejectsUnsafePath(t *testing.T) {
 	_, err := runarchive.Upload(context.Background(), mocks.NewObjectStore(t), testLoc, t.TempDir(),
-		[]string{"../escape"}, nil)
+		[]string{"../escape"}, nil, t.TempDir())
 	require.ErrorContains(t, err, "invalid file path")
 }
 
@@ -219,7 +246,7 @@ func TestDownloadIncompleteRun(t *testing.T) {
 
 func TestDownloadChecksumMismatch(t *testing.T) {
 	objs := archived(t)
-	objs.Data[testLoc.ObjectName("step-g-l2bridgesyncerlite.sqlite")] = []byte("corrupted!!!!!")
+	objs.Data[testLoc.ObjectName("step-g-l2bridgesyncerlite.sqlite.zst")] = []byte("corrupted!!!!!")
 	dest := t.TempDir()
 	_, err := runarchive.Download(context.Background(), newStore(t, objs), testLoc, dest, nil)
 	require.ErrorIs(t, err, runarchive.ErrChecksumMismatch)
@@ -230,27 +257,59 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 func TestDownloadOtherRunInDir(t *testing.T) {
 	objs := archived(t)
 	dest := t.TempDir()
-	writeFile(t, dest, runarchive.ManifestFile, `{"version":1,"files":[]}`)
+	writeFile(t, dest, runarchive.ManifestFile, `{"version":1,"compression":"zstd","files":[]}`)
 	_, err := runarchive.Download(context.Background(), newStore(t, objs), testLoc, dest, nil)
 	require.ErrorIs(t, err, runarchive.ErrCacheDirMismatch)
 }
 
 func TestDownloadRejectsTamperedManifest(t *testing.T) {
-	for name, manifest := range map[string]string{
-		"path escape":     `{"version":1,"files":[{"path":"../x","size":1,"sha256":"%s","crc32c":0}]}`,
-		"absolute path":   `{"version":1,"files":[{"path":"/etc/x","size":1,"sha256":"%s","crc32c":0}]}`,
-		"duplicated file": `{"version":1,"files":[{"path":"a","size":1,"sha256":"%[1]s","crc32c":0},{"path":"a","size":1,"sha256":"%[1]s","crc32c":0}]}`,
-		"unknown version": `{"version":2,"files":[{"path":"a","size":1,"sha256":"%s","crc32c":0}]}`,
-		"unknown field":   `{"version":1,"extra":true,"files":[{"path":"a","size":1,"sha256":"%s","crc32c":0}]}`,
+	sha := fmt.Sprintf("%064x", 0)
+	file := func(path, object string) string {
+		return fmt.Sprintf(`{"path":%q,"size":1,"sha256":%q,"object":%q,"objectSize":1,"objectCrc32c":0}`,
+			path, sha, object)
+	}
+	manifest := func(head string, files ...string) string {
+		return `{` + head + `,"files":[` + strings.Join(files, ",") + `]}`
+	}
+	const v1 = `"version":1,"compression":"zstd"`
+	for name, tc := range map[string]struct{ manifest, want string }{
+		"path escape":         {manifest(v1, file("../x", "../x.zst")), "invalid file path"},
+		"absolute path":       {manifest(v1, file("/etc/x", "/etc/x.zst")), "invalid file path"},
+		"duplicated file":     {manifest(v1, file("a", "a.zst"), file("a", "a.zst")), "duplicated file"},
+		"unknown version":     {manifest(`"version":2,"compression":"zstd"`, file("a", "a.zst")), "unsupported version"},
+		"unknown compression": {manifest(`"version":1,"compression":"gzip"`, file("a", "a.zst")), "unsupported compression"},
+		"unknown field":       {manifest(v1+`,"extra":true`, file("a", "a.zst")), "unknown field"},
+		"object not derived":  {manifest(v1, file("a", "../b.zst")), "object of"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			sha := fmt.Sprintf("%064x", 0)
 			objs := &objects{Data: map[string][]byte{
-				testLoc.ObjectName(runarchive.ManifestFile): []byte(fmt.Sprintf(manifest, sha)),
+				testLoc.ObjectName(runarchive.ManifestFile): []byte(tc.manifest),
 			}}
 			_, err := runarchive.Download(context.Background(), newStore(t, objs), testLoc, t.TempDir(), nil)
-			require.Error(t, err)
-			require.False(t, errors.Is(err, runarchive.ErrIncompleteRun))
+			require.ErrorContains(t, err, tc.want)
 		})
 	}
+}
+
+func zstdBytes(t *testing.T, d []byte) []byte {
+	t.Helper()
+	enc, err := zstd.NewWriter(nil)
+	require.NoError(t, err)
+	defer enc.Close()
+	return enc.EncodeAll(d, nil)
+}
+
+func unzstd(t *testing.T, d []byte) []byte {
+	t.Helper()
+	dec, err := zstd.NewReader(nil)
+	require.NoError(t, err)
+	defer dec.Close()
+	out, err := dec.DecodeAll(d, nil)
+	require.NoError(t, err)
+	return out
+}
+
+func sha256Hex(d []byte) string {
+	sum := sha256.Sum256(d)
+	return hex.EncodeToString(sum[:])
 }

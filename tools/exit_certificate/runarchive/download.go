@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/agglayer/aggkit/log"
+	"github.com/klauspost/compress/zstd"
 )
 
 var (
@@ -161,12 +162,12 @@ func ensureFile(ctx context.Context, store ObjectStore, loc Location, dir string
 		if err != nil {
 			return false, err
 		}
-		if local == entry {
+		if local.sameSource(entry) {
 			return false, nil
 		}
 		log.Warnf("archive: %s differs from the archived file, downloading it again", dest)
 	}
-	if err := downloadFile(ctx, store, loc.ObjectName(entry.Path), dest, entry); err != nil {
+	if err := downloadFile(ctx, store, loc.ObjectName(entry.Object), dest, entry); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -195,6 +196,8 @@ func downloadFile(ctx context.Context, store ObjectStore, name, dest string, ent
 	return nil
 }
 
+// fetchVerified streams the compressed object into tmp, decompressing it on the fly, and checks both the
+// object (size, CRC32C) and the decompressed file (size, SHA-256) against the manifest entry.
 func fetchVerified(ctx context.Context, store ObjectStore, name, tmp string, entry FileEntry) error {
 	r, err := store.NewReader(ctx, name)
 	if err != nil {
@@ -207,17 +210,31 @@ func fetchVerified(ctx context.Context, store ObjectStore, name, tmp string, ent
 	}
 	defer f.Close()
 
-	log.Infof("archive: downloading %s (%d bytes)", entry.Path, entry.Size)
-	sha := sha256.New()
-	crc := crc32.New(crc32cTable)
-	size, err := io.Copy(io.MultiWriter(f, sha, crc), r)
+	log.Infof("archive: downloading %s (%d bytes compressed, %d bytes)", entry.Object, entry.ObjectSize, entry.Size)
+	objCRC := crc32.New(crc32cTable)
+	objSize := &countingWriter{}
+	compressed := io.TeeReader(r, io.MultiWriter(objCRC, objSize))
+	dec, err := zstd.NewReader(compressed)
 	if err != nil {
+		return fmt.Errorf("decompress %s: %w", name, err)
+	}
+	defer dec.Close()
+	sha := sha256.New()
+	size, err := io.Copy(io.MultiWriter(f, sha), dec)
+	if err != nil {
+		return fmt.Errorf("decompress %s: %w: %w", name, ErrChecksumMismatch, err)
+	}
+	// Count any bytes the decoder did not need, so the object checksum covers the whole object.
+	if _, err := io.Copy(io.Discard, compressed); err != nil {
 		return fmt.Errorf("download %s: %w", name, err)
 	}
-	got := FileEntry{Path: entry.Path, Size: size, SHA256: hex.EncodeToString(sha.Sum(nil)), CRC32C: crc.Sum32()}
-	if got != entry {
-		return fmt.Errorf("%s: size %d sha256 %s crc32c %d, manifest says size %d sha256 %s crc32c %d: %w",
-			name, got.Size, got.SHA256, got.CRC32C, entry.Size, entry.SHA256, entry.CRC32C, ErrChecksumMismatch)
+	if objSize.n != entry.ObjectSize || objCRC.Sum32() != entry.ObjectCRC32C {
+		return fmt.Errorf("%s: object size %d crc32c %d, manifest says size %d crc32c %d: %w",
+			name, objSize.n, objCRC.Sum32(), entry.ObjectSize, entry.ObjectCRC32C, ErrChecksumMismatch)
+	}
+	if got := hex.EncodeToString(sha.Sum(nil)); size != entry.Size || got != entry.SHA256 {
+		return fmt.Errorf("%s: decompressed size %d sha256 %s, manifest says size %d sha256 %s: %w",
+			name, size, got, entry.Size, entry.SHA256, ErrChecksumMismatch)
 	}
 	if err := f.Sync(); err != nil {
 		return fmt.Errorf("sync %s: %w", tmp, err)

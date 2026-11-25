@@ -15,30 +15,46 @@ import (
 
 const (
 	// ManifestFile is the name of the manifest, both as an object (<prefix>/archive-manifest.json) and as
-	// the local copy kept next to the downloaded files.
+	// the local copy kept next to the downloaded files. It is the only object stored uncompressed.
 	ManifestFile = "archive-manifest.json"
 	// ManifestVersion is the version of the manifest format.
 	ManifestVersion = 1
+	// CompressionZstd is the only compression supported: every file is stored as <path>.zst.
+	CompressionZstd = "zstd"
+	// objectSuffix is appended to a file's path to name its compressed object.
+	objectSuffix = ".zst"
 	// maxManifestSize bounds the manifest read from the store (a run has a few dozen files).
 	maxManifestSize = 16 << 20
 )
 
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
-// FileEntry describes one archived file.
+// FileEntry describes one archived file: the original file (Path, Size, SHA256) and the compressed object
+// it is stored as (Object, ObjectSize, ObjectCRC32C).
 type FileEntry struct {
 	// Path is the file's path relative to the run directory, slash-separated.
-	Path   string `json:"path"`
+	Path string `json:"path"`
+	// Size and SHA256 are those of the original (uncompressed) file.
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256"`
-	CRC32C uint32 `json:"crc32c"`
+	// Object is the name of the compressed object relative to the run prefix (Path + ".zst"), and
+	// ObjectSize / ObjectCRC32C its size and CRC32C as stored.
+	Object       string `json:"object"`
+	ObjectSize   int64  `json:"objectSize"`
+	ObjectCRC32C uint32 `json:"objectCrc32c"`
+}
+
+// sameSource reports whether both entries describe the same original file.
+func (e FileEntry) sameSource(other FileEntry) bool {
+	return e.Path == other.Path && e.Size == other.Size && e.SHA256 == other.SHA256
 }
 
 // Manifest lists the files of an archived run. It is uploaded last: a prefix without it is incomplete.
 type Manifest struct {
-	Version int `json:"version"`
-	// Info is free-form metadata about the run (tool version, mode, certificate hash...). It is not
-	// compared when deciding whether a prefix already holds the same run.
+	Version     int    `json:"version"`
+	Compression string `json:"compression"`
+	// Info is free-form metadata about the run (tool version, mode, height, certificate hash...). It is
+	// not compared when deciding whether a prefix already holds the same run.
 	Info  map[string]string `json:"info,omitempty"`
 	Files []FileEntry       `json:"files"`
 }
@@ -53,13 +69,13 @@ func (m *Manifest) File(rel string) (FileEntry, bool) {
 	return FileEntry{}, false
 }
 
-// sameFiles reports whether both manifests list exactly the same files with the same content.
+// sameFiles reports whether both manifests list exactly the same original files.
 func (m *Manifest) sameFiles(other *Manifest) bool {
 	if len(m.Files) != len(other.Files) {
 		return false
 	}
 	for i := range m.Files {
-		if m.Files[i] != other.Files[i] {
+		if !m.Files[i].sameSource(other.Files[i]) {
 			return false
 		}
 	}
@@ -74,7 +90,8 @@ func (m *Manifest) encode() ([]byte, error) {
 	return data, nil
 }
 
-// parseManifest decodes and validates a manifest: known version, safe and unique relative paths.
+// parseManifest decodes and validates a manifest: known version and compression, safe and unique relative
+// paths, and object names derived from them.
 func parseManifest(data []byte) (*Manifest, error) {
 	var m Manifest
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -85,6 +102,9 @@ func parseManifest(data []byte) (*Manifest, error) {
 	if m.Version != ManifestVersion {
 		return nil, fmt.Errorf("%s: unsupported version %d (want %d)", ManifestFile, m.Version, ManifestVersion)
 	}
+	if m.Compression != CompressionZstd {
+		return nil, fmt.Errorf("%s: unsupported compression %q (want %q)", ManifestFile, m.Compression, CompressionZstd)
+	}
 	seen := make(map[string]struct{}, len(m.Files))
 	for _, f := range m.Files {
 		if err := validateRelPath(f.Path); err != nil {
@@ -94,11 +114,19 @@ func parseManifest(data []byte) (*Manifest, error) {
 			return nil, fmt.Errorf("%s: duplicated file %q", ManifestFile, f.Path)
 		}
 		seen[f.Path] = struct{}{}
-		if f.Size < 0 || len(f.SHA256) != sha256.Size*2 {
+		if f.Object != objectName(f.Path) {
+			return nil, fmt.Errorf("%s: object of %q must be %q, got %q", ManifestFile, f.Path, objectName(f.Path), f.Object)
+		}
+		if f.Size < 0 || f.ObjectSize < 0 || len(f.SHA256) != sha256.Size*2 {
 			return nil, fmt.Errorf("%s: invalid size or sha256 for %q", ManifestFile, f.Path)
 		}
 	}
 	return &m, nil
+}
+
+// objectName is the name, relative to the run prefix, of the compressed object of the file at rel.
+func objectName(rel string) string {
+	return rel + objectSuffix
 }
 
 // validateRelPath rejects anything but a clean, relative, slash-separated path inside the run directory,
@@ -111,29 +139,19 @@ func validateRelPath(rel string) error {
 	return nil
 }
 
-// hashReader reads r to the end and returns its size, hex SHA-256 and CRC32C.
-func hashReader(r io.Reader) (int64, string, uint32, error) {
-	sha := sha256.New()
-	crc := crc32.New(crc32cTable)
-	n, err := io.Copy(io.MultiWriter(sha, crc), r)
-	if err != nil {
-		return 0, "", 0, err
-	}
-	return n, hex.EncodeToString(sha.Sum(nil)), crc.Sum32(), nil
-}
-
-// hashFile returns the FileEntry of the local file at localPath, stored as rel.
+// hashFile returns the source fields (Path, Size, SHA256) of the FileEntry of the local file at localPath.
 func hashFile(localPath, rel string) (FileEntry, error) {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return FileEntry{}, fmt.Errorf("open %s: %w", localPath, err)
 	}
 	defer f.Close()
-	size, sha, crc, err := hashReader(f)
+	sha := sha256.New()
+	size, err := io.Copy(sha, f)
 	if err != nil {
 		return FileEntry{}, fmt.Errorf("hash %s: %w", localPath, err)
 	}
-	return FileEntry{Path: rel, Size: size, SHA256: sha, CRC32C: crc}, nil
+	return FileEntry{Path: rel, Size: size, SHA256: hex.EncodeToString(sha.Sum(nil)), Object: objectName(rel)}, nil
 }
 
 // checksum returns the CRC32C of data.
@@ -145,4 +163,12 @@ func checksum(data []byte) uint32 {
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// countingWriter counts the bytes written through it.
+type countingWriter struct{ n int64 }
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.n += int64(len(p))
+	return len(p), nil
 }

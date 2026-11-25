@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -14,7 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testArchiveURI = "gs://let-archive/runs/2026-11-24-full"
+const (
+	// testArchiveURI is the archive base (options.archiveURI); a run lives at <base>/<network>/<height>.
+	testArchiveURI = "gs://let-archive/runs"
+	// testRunURI is the run writePreviousRun's certificate (network 7, height 3) is archived at.
+	testRunURI = testArchiveURI + "/7/0000000003"
+)
 
 func TestArchiveConfig(t *testing.T) {
 	t.Parallel()
@@ -40,9 +46,9 @@ func TestArchiveConfig(t *testing.T) {
 	require.ErrorContains(t, err, "invalid options.archiveURI")
 
 	// A gs:// previousRun is kept as is (not resolved as a path) and validated.
-	cfg, err = load(t, `,"deltaMode":true,"previousRun":"`+testArchiveURI+`","deltaExitsFile":"exits.json"`)
+	cfg, err = load(t, `,"deltaMode":true,"previousRun":"`+testRunURI+`","deltaExitsFile":"exits.json"`)
 	require.NoError(t, err)
-	require.Equal(t, testArchiveURI, cfg.Options.PreviousRun)
+	require.Equal(t, testRunURI, cfg.Options.PreviousRun)
 	_, err = load(t, `,"deltaMode":true,"previousRun":"gs://bucket/","deltaExitsFile":"exits.json"`)
 	require.ErrorContains(t, err, "invalid options.previousRun")
 
@@ -93,10 +99,13 @@ func TestArchiveRoundTrip(t *testing.T) {
 
 	objs := &archivetest.Objects{}
 	open := archivetest.Opener(t, objs)
-	upCfg := &Config{L2NetworkID: 1, Options: Options{OutputDir: dir, ArchiveURI: testArchiveURI}}
+	upCfg := &Config{L2NetworkID: deltaTestNetworkID, Options: Options{
+		OutputDir: dir, ArchiveURI: testArchiveURI, ArchiveCacheDir: t.TempDir(),
+	}}
 	require.NoError(t, runUpload(context.Background(), upCfg, open))
 
-	loc, err := runarchive.ParseURI(testArchiveURI)
+	// The run goes to <base>/<network>/<height>: the certificate's network 7 and height 3.
+	loc, err := runarchive.ParseURI(testRunURI)
 	require.NoError(t, err)
 	raw, ok := objs.Get(loc.ObjectName(runarchive.ManifestFile))
 	require.True(t, ok)
@@ -109,6 +118,11 @@ func TestArchiveRoundTrip(t *testing.T) {
 	require.ElementsMatch(t, []string{fileSignedCertificate, fileStepWaitResult, fileStepGLiteDB,
 		dirRecoveries + "/" + fileRecoveriesDelta}, paths)
 	require.Equal(t, "full", m.Info["mode"])
+	require.Equal(t, "3", m.Info["height"])
+	require.Equal(t, root.Hex(), m.Info["newLocalExitRoot"])
+	require.Equal(t, runarchive.CompressionZstd, m.Compression)
+	_, ok = objs.Get(loc.ObjectName(fileStepGLiteDB + ".zst"))
+	require.True(t, ok, "files are stored compressed")
 	require.Equal(t, "0x0000000000000000000000000000000000000000000000000000000000000099", m.Info["certificateHash"])
 	require.FileExists(t, filepath.Join(dir, runarchive.ManifestFile), "local copy of the archived manifest")
 
@@ -117,7 +131,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 
 	cache := t.TempDir()
 	deltaCfg := &Config{Options: Options{
-		DeltaMode: true, PreviousRun: testArchiveURI, OutputDir: t.TempDir(), ArchiveCacheDir: cache,
+		DeltaMode: true, PreviousRun: testRunURI, OutputDir: t.TempDir(), ArchiveCacheDir: cache,
 	}}
 	require.NoError(t, resolvePreviousRun(context.Background(), deltaCfg, open))
 	require.Equal(t, runarchive.CacheDir(cache, loc), deltaCfg.Options.PreviousRun)
@@ -145,7 +159,7 @@ func TestRunUploadRequiresSettledRun(t *testing.T) {
 	require.ErrorContains(t, err, "requires options.archiveURI")
 
 	dir := t.TempDir()
-	cfg := &Config{Options: Options{OutputDir: dir, ArchiveURI: testArchiveURI}}
+	cfg := &Config{L2NetworkID: deltaTestNetworkID, Options: Options{OutputDir: dir, ArchiveURI: testArchiveURI}}
 	err = runUpload(context.Background(), cfg, open)
 	require.ErrorContains(t, err, "archives a settled run only")
 
@@ -162,16 +176,21 @@ func TestRunUploadRequiresSettledRun(t *testing.T) {
 	require.ErrorContains(t, err, fileFullCertificate+" not found")
 }
 
-func TestRunUploadRefusesAnotherRunAtThePrefix(t *testing.T) {
+func TestRunUploadRefusesAnotherRunAtTheSameHeight(t *testing.T) {
 	t.Parallel()
 	objs := &archivetest.Objects{}
 	open := archivetest.Opener(t, objs)
 	first, _ := writePreviousRun(t, fileSignedCertificate, 2, nil)
 	require.NoError(t, runUpload(context.Background(),
-		&Config{Options: Options{OutputDir: first, ArchiveURI: testArchiveURI}}, open))
+		&Config{L2NetworkID: deltaTestNetworkID, Options: Options{
+			OutputDir: first, ArchiveURI: testArchiveURI, ArchiveCacheDir: t.TempDir(),
+		}}, open))
 
 	second, _ := writePreviousRun(t, fileSignedCertificate, 5, nil)
-	err := runUpload(context.Background(), &Config{Options: Options{OutputDir: second, ArchiveURI: testArchiveURI}}, open)
+	// Same network and height (3): the write-once bucket holds one run per certificate height.
+	err := runUpload(context.Background(), &Config{L2NetworkID: deltaTestNetworkID, Options: Options{
+		OutputDir: second, ArchiveURI: testArchiveURI, ArchiveCacheDir: t.TempDir(),
+	}}, open)
 	require.ErrorIs(t, err, runarchive.ErrRunExists)
 }
 
@@ -227,4 +246,42 @@ func TestRunDeltaStepsAllowsUpload(t *testing.T) {
 	t.Parallel()
 	err := runDeltaSteps(context.Background(), &Config{Options: Options{OutputDir: t.TempDir()}}, stepUpload)
 	require.ErrorContains(t, err, "requires options.archiveURI")
+}
+
+func TestRunCertificateHeader(t *testing.T) {
+	t.Parallel()
+	dir, root := writePreviousRun(t, fileSignedCertificate, 2, nil)
+	cfg := &Config{L2NetworkID: deltaTestNetworkID}
+
+	header, err := runCertificateHeader(cfg, dir, fileSignedCertificate)
+	require.NoError(t, err)
+	require.Equal(t, certificateHeader{NetworkID: deltaTestNetworkID, Height: 3, NewLocalExitRoot: root}, *header)
+
+	_, err = runCertificateHeader(&Config{L2NetworkID: 99}, dir, fileSignedCertificate)
+	require.ErrorContains(t, err, "is for network 7")
+
+	require.NoError(t, saveJSON(dir, fileStepHPreviousLocalExitRoot, &StepHResult{Height: 4}))
+	_, err = runCertificateHeader(cfg, dir, fileSignedCertificate)
+	require.ErrorContains(t, err, "has height 3 but")
+
+	require.NoError(t, saveJSON(dir, fileStepHPreviousLocalExitRoot, &StepHResult{Height: 3}))
+	_, err = runCertificateHeader(cfg, dir, fileSignedCertificate)
+	require.NoError(t, err)
+}
+
+func TestReadCertificateHeaderStopsBeforeTheExits(t *testing.T) {
+	t.Parallel()
+	p := filepath.Join(t.TempDir(), "cert.json")
+	// The exits after the header are not valid JSON: reading must stop once the header is complete.
+	content := `{"network_id":1,"height":5,"prev_local_exit_root":"0x` + strings.Repeat("11", 32) +
+		`","new_local_exit_root":"0x` + strings.Repeat("22", 32) + `","bridge_exits":[NOT JSON`
+	require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
+	header, err := readCertificateHeader(p)
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), header.Height)
+	require.Equal(t, uint32(1), header.NetworkID)
+
+	require.NoError(t, os.WriteFile(p, []byte(`{"network_id":1}`), 0o600))
+	_, err = readCertificateHeader(p)
+	require.ErrorContains(t, err, "header incomplete")
 }

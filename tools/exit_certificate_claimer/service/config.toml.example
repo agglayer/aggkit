@@ -9,7 +9,7 @@ writeTimeoutSeconds = 30
 
 # Outputs of the exit_certificate tool. Alternatively, set runSource (and leave these three empty) to
 # download them from the run's archive in a GCS bucket (exit_certificate --step upload):
-#runSource  = "gs://<bucket>/runs/<YYYY-MM-DD>-<label>"
+#runSource  = "gs://<bucket>/runs/<networkID>/<height, 10 digits>"   # e.g. gs://<bucket>/runs/1/0000000005
 #runDataDir = "./archive-cache"   # default: archive-cache next to this file
 
 signedCertificatePath = "../../exit_certificate/output/exit-certificate-signed.json"

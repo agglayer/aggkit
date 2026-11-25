@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/googleapi"
@@ -55,7 +56,7 @@ func (s *GCSStore) Attrs(ctx context.Context, name string) (ObjectAttrs, error) 
 		}
 		return ObjectAttrs{}, fmt.Errorf("stat %s: %w", name, err)
 	}
-	return ObjectAttrs{Size: attrs.Size, CRC32C: attrs.CRC32C}, nil
+	return ObjectAttrs{Size: attrs.Size, CRC32C: attrs.CRC32C, Metadata: attrs.Metadata}, nil
 }
 
 // NewReader implements ObjectStore. The client verifies the CRC32C of a full read.
@@ -72,13 +73,19 @@ func (s *GCSStore) NewReader(ctx context.Context, name string) (io.ReadCloser, e
 
 // Create implements ObjectStore with a DoesNotExist precondition, so an existing object is never replaced
 // (and the upload is idempotent for the client's retries).
-func (s *GCSStore) Create(ctx context.Context, name string, r io.Reader, crc32c uint32) error {
+func (s *GCSStore) Create(
+	ctx context.Context, name string, r io.Reader, crc32c uint32, metadata map[string]string,
+) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel() // aborts the upload if we return before Close
 	w := s.bucket.Object(name).If(storage.Conditions{DoesNotExist: true}).NewWriter(ctx)
 	w.ChunkSize = gcsChunkSize
 	w.CRC32C = crc32c
 	w.SendCRC32C = true
+	w.Metadata = metadata
+	// No Content-Encoding on purpose: GCS would then decompress on download (decompressive transcoding)
+	// and the bytes read would no longer match the stored CRC32C.
+	w.ContentType = contentTypeFor(name)
 	if _, err := io.Copy(w, r); err != nil {
 		_ = w.Close()
 		return mapCreateError(name, err)
@@ -87,6 +94,15 @@ func (s *GCSStore) Create(ctx context.Context, name string, r io.Reader, crc32c 
 		return mapCreateError(name, err)
 	}
 	return nil
+}
+
+// contentTypeFor is the Content-Type of an archived object: zstd for the compressed data, JSON for the
+// manifest.
+func contentTypeFor(name string) string {
+	if strings.HasSuffix(name, objectSuffix) {
+		return "application/zstd"
+	}
+	return "application/json"
 }
 
 func mapCreateError(name string, err error) error {

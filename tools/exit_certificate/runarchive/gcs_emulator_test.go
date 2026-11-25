@@ -53,16 +53,25 @@ func TestGCSStoreEmulator(t *testing.T) {
 	files, err := runarchive.CollectFiles(dir, nil)
 	require.NoError(t, err)
 
-	res, err := runarchive.Upload(ctx, store, loc, dir, files, map[string]string{"mode": "full"})
+	res, err := runarchive.Upload(ctx, store, loc, dir, files, map[string]string{"mode": "full"}, t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, 2, res.Uploaded)
 
+	// The object is compressed and carries the original's sha256 as metadata (what a resumed upload matches).
+	entry, ok := res.Manifest.File("step-g-l2bridgesyncerlite.sqlite")
+	require.True(t, ok)
+	attrs, err := store.Attrs(ctx, loc.ObjectName(entry.Object))
+	require.NoError(t, err)
+	require.Equal(t, entry.SHA256, attrs.Metadata[runarchive.MetadataSourceSHA256])
+	require.Equal(t, entry.ObjectSize, attrs.Size)
+	require.Equal(t, entry.ObjectCRC32C, attrs.CRC32C)
+
 	// Write-once: a second Create of the same name is refused, the object is unchanged.
-	err = store.Create(ctx, loc.ObjectName("exit-certificate-signed.json"), bytes.NewReader([]byte("other")),
-		archivetest.CRC32C([]byte("other")))
+	err = store.Create(ctx, loc.ObjectName("exit-certificate-signed.json.zst"), bytes.NewReader([]byte("other")),
+		archivetest.CRC32C([]byte("other")), nil)
 	require.ErrorIs(t, err, runarchive.ErrObjectExists)
 
-	res, err = runarchive.Upload(ctx, store, loc, dir, files, nil)
+	res, err = runarchive.Upload(ctx, store, loc, dir, files, nil, t.TempDir())
 	require.NoError(t, err)
 	require.True(t, res.AlreadyComplete)
 
