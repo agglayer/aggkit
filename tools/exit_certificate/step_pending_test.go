@@ -30,21 +30,28 @@ func TestSelectPendingCandidates(t *testing.T) {
 
 	bridges := []bridgesyncerlite.BridgeLeaf{
 		pendingTestLeaf(3, 0, 0), // asset to L1 → candidate
-		pendingTestLeaf(1, 1, 0), // message → skipped
+		pendingTestLeaf(1, 1, 0), // message to L1 → candidate
 		pendingTestLeaf(2, 0, 2), // asset to another network → skipped
 		pendingTestLeaf(0, 0, 0), // asset to L1 → candidate
-		pendingTestLeaf(4, 0, 0), // certificate exit → skipped
-		pendingTestLeaf(5, 0, 0), // certificate exit → skipped
+		pendingTestLeaf(4, 1, 2), // message to another network → skipped
+		pendingTestLeaf(5, 2, 0), // unknown leaf type → skipped
+		pendingTestLeaf(6, 1, 0), // certificate exit (a message) → skipped
+		pendingTestLeaf(7, 0, 0), // certificate exit → skipped
 	}
 
 	candidates, err := selectPendingCandidates(bridges, 2)
 	require.NoError(t, err)
-	require.Len(t, candidates, 2)
+	require.Len(t, candidates, 3)
 	// Ordered by deposit count, whatever the input order.
 	require.Equal(t, uint32(0), candidates[0].DepositCount)
-	require.Equal(t, uint32(3), candidates[1].DepositCount)
-	require.Equal(t, big.NewInt(103), candidates[1].Amount)
-	require.Equal(t, []byte{3}, []byte(candidates[1].Metadata))
+	require.Equal(t, uint32(1), candidates[1].DepositCount)
+	require.Equal(t, pendingLeafTypeMessage, candidates[1].LeafType)
+	require.Equal(t, []byte{1}, []byte(candidates[1].Metadata))
+	require.Equal(t, uint32(3), candidates[2].DepositCount)
+	require.Equal(t, pendingLeafTypeAsset, candidates[2].LeafType)
+	require.Equal(t, big.NewInt(103), candidates[2].Amount)
+	require.Equal(t, []byte{3}, []byte(candidates[2].Metadata))
+	require.Equal(t, 1, countPendingMessages(candidates))
 
 	_, err = selectPendingCandidates(bridges, uint64(len(bridges))+1)
 	require.ErrorContains(t, err, "run step g first")
@@ -67,8 +74,8 @@ func TestRunStepPending(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), fileStepGLiteDB)
 	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: dbPath}, nil)
 	require.NoError(t, err)
-	// 0 and 3 are pre-certificate assets to L1, 1 is a message, 2 goes to another network and
-	// 4 is the certificate's only exit.
+	// 0 and 3 are pre-certificate assets to L1, 1 is a pre-certificate message to L1, 2 goes to
+	// another network and 4 is the certificate's only exit.
 	require.NoError(t, syncer.StoreBridges(ctx, []bridgesyncerlite.BridgeLeaf{
 		pendingTestLeaf(0, 0, 0), pendingTestLeaf(1, 1, 0), pendingTestLeaf(2, 0, 2),
 		pendingTestLeaf(3, 0, 0), pendingTestLeaf(4, 0, 0),
@@ -99,10 +106,14 @@ func TestRunStepPending(t *testing.T) {
 
 	pending, err := RunStepPending(ctx, cfg, dbPath, &StepGResult{BridgeExitCount: 1})
 	require.NoError(t, err)
-	require.Len(t, pending, 1)
-	require.Equal(t, uint32(3), pending[0].DepositCount)
-	require.Equal(t, common.HexToAddress("0xd1"), pending[0].DestinationAddress)
-	require.Equal(t, big.NewInt(103), pending[0].Amount)
+	// The unclaimed message (1) is kept along with the unclaimed asset (3); isClaimed is asked for both.
+	require.Len(t, pending, 2)
+	require.Equal(t, uint32(1), pending[0].DepositCount)
+	require.Equal(t, pendingLeafTypeMessage, pending[0].LeafType)
+	require.Equal(t, []byte{1}, []byte(pending[0].Metadata))
+	require.Equal(t, uint32(3), pending[1].DepositCount)
+	require.Equal(t, common.HexToAddress("0xd1"), pending[1].DestinationAddress)
+	require.Equal(t, big.NewInt(103), pending[1].Amount)
 }
 
 func TestRunStepPendingInvalidIsClaimedResult(t *testing.T) {

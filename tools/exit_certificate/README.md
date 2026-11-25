@@ -548,10 +548,11 @@ certificate's `new_local_exit_root`. This step lists them so the claimer can ser
 
 1. Reads every leaf of `step-g-l2bridgesyncerlite.sqlite` and drops the last `bridgeExitCount` ones
    (`step-g-new-local-exit-root.json`): those are the certificate's own exits.
-2. Keeps the assets (`leaf_type=0`) destined to L1 (`destination_network=0`). Messages are left out: the
-   claimer only builds `claimAsset` calls.
+2. Keeps the assets (`leaf_type=0`) and the messages (`leaf_type=1`) destined to L1
+   (`destination_network=0`). A message is claimed with `claimMessage`: the claimer serves it through its
+   API v2 only (`/claimer/v2`), API v1 keeps returning assets only.
 3. Calls `isClaimed(depositCount, l2NetworkId)` on `l1BridgeAddress` through `l1RpcUrl` and keeps the
-   unclaimed ones.
+   unclaimed ones (`claimAsset` and `claimMessage` share the same claimed bitmap).
 
 Requires `l1RpcUrl` and `l1BridgeAddress` (it defaults to `l2BridgeAddress`), and the Step G output in the output directory.
 
@@ -919,7 +920,7 @@ delta in `recoveriesPath` and remove `<outputDir>/recoveries/` to regenerate it.
 After the full flow completes (the certificate is built and signed, then SUBMIT and WAIT succeed):
 
 - **The agglayer holds every bridge exit in the certificate.** Once the certificate settles, the agglayer accounts for all of the certificate's `bridge_exits` — the value has been bridged out of the L2 and is ready to be claimed on the destination network.
-- **The files needed to claim those bridges have been generated.** Claiming each exit requires calling `claimAsset` on the bridge contract with Merkle proofs and the exit roots. The companion [`exit_certificate_claimer`](../exit_certificate_claimer/README.md) tool consumes the exit_certificate output and produces the parameters for each `claimAsset` call.
+- **The files needed to claim those bridges have been generated.** Claiming each exit requires calling `claimAsset` (or `claimMessage`, for a `Message` exit) on the bridge contract with Merkle proofs and the exit roots. The companion [`exit_certificate_claimer`](../exit_certificate_claimer/README.md) tool consumes the exit_certificate output and produces the parameters for each `claimAsset` / `claimMessage` call.
 
 The output files the claimer needs are:
 
