@@ -121,7 +121,8 @@ The service is read-only: it never sends transactions.
 
 API v1 (`/claimer/v1`: `Transfer` exits only, looked up by `dest_address`) has been removed. Only
 `GET /claimer/v1/health` is kept, so existing probes and monitoring keep working: it returns `status`,
-`network_id`, `version` and `api_versions: [2]`. Any other `/claimer/v1/*` path answers `410 Gone`:
+`network_id`, `version`, `api_versions: [2]` and the `run` / `follow` objects of the v2 health. Any
+other `/claimer/v1/*` path answers `410 Gone`:
 
 ```json
 { "error": "claimer API v1 has been removed, use /claimer/v2", "api_versions": [2] }
@@ -165,7 +166,8 @@ makes `L1Escrow` pay the holder. Anyone can send that transaction.
 
 ### `GET /claimer/v2/health`
 
-Liveness/readiness probe.
+Liveness/readiness probe. Also reports the run being served and, in follow mode, its state (`run` and `follow`,
+see [Run and follow fields of `/health`](#run-and-follow-fields-of-health)).
 
 **Response — `200 OK`**
 
@@ -183,7 +185,23 @@ Liveness/readiness probe.
     "os": "linux",
     "arch": "amd64"
   },
-  "api_versions": [2]
+  "api_versions": [2],
+  "run": {
+    "source": "gs://<bucket>/runs/1/0000000005",
+    "height": 5,
+    "certificate_hash": "0x…",
+    "data_version": 1
+  },
+  "follow": {
+    "interval_seconds": 60,
+    "next_run": "gs://<bucket>/runs/1/0000000006",
+    "next_height": 6,
+    "last_check_time": "2026-11-25T10:00:00Z",
+    "last_check_result": "no_new_run",
+    "blocked_by_unsupported_version": false,
+    "preparing": false,
+    "last_switch_time": "2026-11-24T18:30:00Z"
+  }
 }
 ```
 
@@ -194,6 +212,61 @@ Liveness/readiness probe.
 | `network_id` | number | The source network ID the claimer is serving. |
 | `version` | object | Build/version info (same fields the exit_certificate tool prints in its startup banner): `version`, `git_rev`, `git_branch`, `build_date`, `go_version`, `os`, `arch`. Populated at build time via ldflags. |
 | `api_versions` | number[] | Major API versions this claimer serves (see [API versioning](#api-versioning)): `[2]`. |
+| `run` | object | The exit_certificate run being served (see below). |
+| `follow` | object | State of follow mode (see below). **Absent when follow mode is disabled.** |
+
+#### Run and follow fields of `/health`
+
+Returned by `/claimer/v2/health` and by the kept `/claimer/v1/health` (an additive change: clients must
+ignore fields they do not know, and must not require these).
+
+`run` — the run being served. In follow mode it changes when the claimer switches run.
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `source` | string | Archive prefix of the run, `gs://<bucket>/<base>/<networkID>/<height>`. Absent when the claimer serves local files. |
+| `height` | number | Height of the run's certificate. |
+| `certificate_hash` | string | Agglayer hash of the run's certificate (from `step-wait-result.json`). |
+| `data_version` | number | Data version of the archived run (its manifest's `dataVersion`). Absent when the claimer serves local files. |
+
+`follow` — follow mode (the claimer looks for the run of the next height and switches to it on its own).
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `interval_seconds` | number | Seconds between checks. |
+| `next_run` | string | Archive prefix the claimer looks for the next run at. |
+| `next_height` | number | Its height: `run.height + 1`. |
+| `last_check_time` | string | When the last check finished (RFC 3339, UTC). Absent before the first check. |
+| `last_check_result` | string | Result of the last check (table below). Absent before the first check. |
+| `blocked_by_unsupported_version` | boolean | `true` while the run at `next_run` exists but has a manifest or data version this claimer does not support: the claimer keeps serving `run` and needs an upgrade. |
+| `preparing` | boolean | `true` while a new run is being downloaded, loaded or synced, before the switch. |
+| `last_switch_time` | string | When the claimer last switched run (RFC 3339, UTC). Absent if it never did. |
+
+| `last_check_result` | Meaning | Still serving `run`? |
+| ------------------- | ------- | -------------------- |
+| `no_new_run` | Nothing complete is archived at `next_run` (no manifest). The normal state. | yes |
+| `switched` | The claimer switched to the run of the next height. Rarely seen: after a switch it checks the following height at once, which usually gives `no_new_run`; use `last_switch_time`. | yes (the new one) |
+| `unsupported_version` | The next run has an unsupported manifest or data version. | yes |
+| `lookup_failed` | The archive could not be read. | yes |
+| `download_failed` | The next run could not be downloaded, or a file did not match its manifest. | yes |
+| `load_failed` | The files of the next run could not be loaded or are not consistent (e.g. its certificate is not the one of that height). | yes |
+| `l1_sync_failed` | The settlement of the next run could not be indexed in the L1 Info Tree. | yes |
+
+Every result other than `switched` leaves the claimer serving the same run, and every failure is retried at
+the next check. No error text is exposed here (it could carry internal URLs): the detail is in the logs.
+`status` stays `ok` in all of them — the claimer keeps answering claim requests for the run it serves.
+
+**Version policy of the archived data.** The manifest of an archived run carries `version` (manifest format)
+and `dataVersion` (format of the run files: certificate JSON, exit-tree DB schema, `step-wait-result.json`,
+`step-pending-l2-bridges.json`; absent = 1). A claimer supports a fixed range of each (today: 1 and 1). A run
+outside it is refused at startup (the process exits with an error) and never switched to in follow mode
+(`blocked_by_unsupported_version`). The exit_certificate tool bumps `dataVersion` whenever a change would
+break an older claimer, so an old claimer never serves data it does not understand.
+
+**What changes for a client when the claimer switches run.** The exits of the previous run are all in the new
+one, with the same `deposit_count` and `global_index`; the new run adds exits. Claim parameters already
+returned stay valid on L1 (they are anchored to the settlement of the run they came from); the ones returned
+after the switch are anchored to the new run's settlement.
 
 ### `GET /claimer/v2/bridges`
 
@@ -372,4 +445,9 @@ with an empty `bridges` / `claims` array.
 - Error model and status codes beyond the current `400` / `409` / `500`.
 - Transaction-status feedback loop (does the UI poll L1, or does the claimer help?).
 - UI: how to know whether a bridge exit has already been claimed on L1.
+- Follow mode — gap detection: if the run of height `h+1` is never archived, the claimer stays at `h` (runs
+  are applied in order) and `/health` keeps saying `no_new_run`. It does not yet warn when L1 or the agglayer
+  show a higher settled height than the one served. The claimer has no agglayer client; a possible check with
+  what it has is to compare the network's last local exit root in the L1 RollupManager with the served
+  certificate's `new_local_exit_root`.
 

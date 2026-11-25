@@ -35,7 +35,9 @@ Data sources:
                                          read-only or kept in sync from L1 when l1Sync.enabled.
 
 The run data (certificate, local exit tree, WAIT result) can also be downloaded from the run's
-archive in a GCS bucket: runSource in the config, or --run-source with --exit-certificate-config.`
+archive in a GCS bucket: runSource in the config, or --run-source with --exit-certificate-config.
+In follow mode (followIntervalSeconds / --follow-interval-seconds) the claimer then switches to the
+run of each next certificate height as it is archived, without a restart.`
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
@@ -52,8 +54,26 @@ archive in a GCS bucket: runSource in the config, or --run-source with --exit-ce
 		&cli.StringFlag{
 			Name: "run-source",
 			Usage: "With --exit-certificate-config: serve the run archived at this gs://<bucket>/<prefix> " +
-				"(downloaded into the exit_certificate archive cache) instead of the files of its output dir",
+				"(downloaded into the exit_certificate archive cache) instead of the files of its output dir. " +
+				"With --run-source-height it is the archive base instead of a run",
 			EnvVars: []string{"CLAIMER_RUN_SOURCE"},
+		},
+		&cli.Uint64Flag{
+			Name: "run-source-height",
+			Usage: "With --run-source: --run-source is the archive base and the run served is " +
+				"<base>/<l2NetworkId>/<this certificate height>",
+			EnvVars: []string{"CLAIMER_RUN_SOURCE_HEIGHT"},
+		},
+		&cli.IntFlag{
+			Name: "follow-interval-seconds",
+			Usage: "With --run-source: follow mode. Look every that many seconds for the run of the next " +
+				"certificate height in the archive and switch to it without a restart (0 = disabled)",
+			EnvVars: []string{"CLAIMER_FOLLOW_INTERVAL_SECONDS"},
+		},
+		&cli.BoolFlag{
+			Name:    "follow-keep-old-runs",
+			Usage:   "With follow mode: keep the local copy of a run after switching to the next one",
+			EnvVars: []string{"CLAIMER_FOLLOW_KEEP_OLD_RUNS"},
 		},
 		&cli.StringFlag{
 			Name: "message-routes",

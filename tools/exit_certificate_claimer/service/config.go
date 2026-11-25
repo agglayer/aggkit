@@ -55,6 +55,18 @@ type Config struct {
 	// localExitTreeDBPath, stepWaitResultPath and pendingBridgesPath must be left empty. Read access to the
 	// bucket is enough.
 	RunSource string `json:"runSource"`
+	// RunSourceHeight, when set, makes RunSource the archive base (gs://<bucket>/<base prefix>) instead of
+	// a run: the run served is <RunSource>/<NetworkID>/<RunSourceHeight, 10 digits>, so NetworkID is
+	// required. Leave it unset when RunSource already names the run.
+	RunSourceHeight *uint64 `json:"runSourceHeight"`
+	// FollowIntervalSeconds enables follow mode when greater than 0: every that many seconds the claimer
+	// looks for the run of the next certificate height in the archive and, once it is downloaded, verified
+	// and its settlement indexed in the L1 Info Tree, serves it instead of the current one, without a
+	// restart. It needs RunSource (a run of the archive layout, or the base with RunSourceHeight).
+	FollowIntervalSeconds int `json:"followIntervalSeconds"`
+	// FollowCleanupOldRuns says whether follow mode removes the local copy of a run (its directory under
+	// RunDataDir) once the next one is being served. Defaults to true.
+	FollowCleanupOldRuns *bool `json:"followCleanupOldRuns"`
 	// RunDataDir is the base directory RunSource is downloaded into (one subdirectory per bucket/prefix).
 	// Defaults to "archive-cache" next to the config file.
 	RunDataDir string `json:"runDataDir"`
@@ -68,6 +80,9 @@ type Config struct {
 
 	// L1Sync controls optional background synchronization of the L1 Info Tree from L1.
 	L1Sync L1SyncConfig `json:"l1Sync"`
+
+	// servedRun describes the archived run the run data paths point at, once FetchRunSource downloaded it.
+	servedRun *runFiles
 }
 
 // L1SyncConfig controls the optional L1 Info Tree synchronization. When Enabled is false the
@@ -153,6 +168,13 @@ func (c *Config) validate() error {
 	if err := validateMessageRoutes(c.MessageRoutes); err != nil {
 		return err
 	}
+	if c.FollowIntervalSeconds < 0 {
+		return fmt.Errorf("followIntervalSeconds must not be negative")
+	}
+	if c.RunSource == "" && (c.FollowIntervalSeconds > 0 || c.RunSourceHeight != nil) {
+		return fmt.Errorf("followIntervalSeconds and runSourceHeight need runSource: follow mode only follows " +
+			"runs of an archive")
+	}
 	if c.RunSource != "" {
 		if err := c.validateRunSource(); err != nil {
 			return err
@@ -186,15 +208,69 @@ func (c *Config) checkRunSourcePaths() error {
 	return nil
 }
 
-// validateRunSource checks runSource and runDataDir.
+// validateRunSource checks runSource, runSourceHeight, the follow mode options and runDataDir.
 func (c *Config) validateRunSource() error {
-	if _, err := runarchive.ParseURI(c.RunSource); err != nil {
-		return fmt.Errorf("invalid runSource: %w", err)
+	ref, err := c.runRef()
+	if err != nil {
+		return err
+	}
+	if c.FollowIntervalSeconds > 0 && !ref.InLayout {
+		return fmt.Errorf("followIntervalSeconds needs a runSource of the archive layout: a run "+
+			"gs://<bucket>/<base>/<networkID>/<height, 10 digits>, or the base with runSourceHeight (the next run "+
+			"is looked up by height); %s is neither", c.RunSource)
 	}
 	if c.RunDataDir == "" {
 		return fmt.Errorf("runDataDir is required with runSource")
 	}
 	return nil
+}
+
+// runRef is the archived run a config serves first.
+type runRef struct {
+	// Location is the run's location.
+	Location runarchive.Location
+	// InLayout is true when the run is at <Base>/<NetworkID>/<Height>, the layout exit_certificate archives
+	// runs in. Only then the run of the next height can be located (follow mode). Base, NetworkID and
+	// Height are only meaningful when it is true.
+	InLayout  bool
+	Base      runarchive.Location
+	NetworkID uint32
+	Height    uint64
+}
+
+// runRef resolves runSource (and runSourceHeight) into the run to serve. runSource is a run when its prefix
+// ends with /<networkID>/<height, 10 digits> (runarchive.Location.RunParts); with runSourceHeight it is the
+// archive base and the run is <base>/<networkId>/<runSourceHeight>. Any other prefix is taken as a run
+// outside the layout (it can be served, not followed).
+func (c *Config) runRef() (*runRef, error) {
+	loc, err := runarchive.ParseURI(c.RunSource)
+	if err != nil {
+		return nil, fmt.Errorf("invalid runSource: %w", err)
+	}
+	base, networkID, height, isRun := loc.RunParts()
+	switch {
+	case isRun && c.RunSourceHeight != nil:
+		return nil, fmt.Errorf("runSource %s already names a run (network %d, height %d): remove "+
+			"runSourceHeight, or set runSource to the archive base", c.RunSource, networkID, height)
+	case isRun:
+		return &runRef{Location: loc, InLayout: true, Base: base, NetworkID: networkID, Height: height}, nil
+	case c.RunSourceHeight != nil:
+		if c.NetworkID == 0 {
+			return nil, fmt.Errorf("runSourceHeight makes runSource the archive base: networkId is required to " +
+				"locate the run (<runSource>/<networkId>/<height>)")
+		}
+		return &runRef{
+			Location: loc.Run(c.NetworkID, *c.RunSourceHeight), InLayout: true,
+			Base: loc, NetworkID: c.NetworkID, Height: *c.RunSourceHeight,
+		}, nil
+	default:
+		return &runRef{Location: loc}, nil
+	}
+}
+
+// followCleanupOldRuns returns the effective followCleanupOldRuns (default true).
+func (c *Config) followCleanupOldRuns() bool {
+	return c.FollowCleanupOldRuns == nil || *c.FollowCleanupOldRuns
 }
 
 // validateL1 checks the L1 Info Tree settings.

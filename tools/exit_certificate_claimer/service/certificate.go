@@ -36,6 +36,7 @@ type bridgeExit struct {
 // signedCertificate mirrors the fields of exit-certificate-signed.json that this tool needs.
 type signedCertificate struct {
 	NetworkID           uint32       `json:"network_id"`
+	Height              uint64       `json:"height"`
 	PrevLocalExitRoot   common.Hash  `json:"prev_local_exit_root"`
 	NewLocalExitRoot    common.Hash  `json:"new_local_exit_root"`
 	BridgeExits         []bridgeExit `json:"bridge_exits"`
@@ -45,7 +46,9 @@ type signedCertificate struct {
 // Certificate is the parsed, validated view of the signed exit certificate. Each bridge exit is
 // normalized into a leaf so it can be cross-checked against the local exit tree leaf at its position.
 type Certificate struct {
-	NetworkID        uint32
+	NetworkID uint32
+	// Height is the certificate's height: the one of the run it belongs to.
+	Height           uint64
 	NewLocalExitRoot common.Hash
 	Leaves           []CertificateLeaf
 }
@@ -118,6 +121,7 @@ func LoadCertificate(path string) (*Certificate, error) {
 
 	cert := &Certificate{
 		NetworkID:        sc.NetworkID,
+		Height:           sc.Height,
 		NewLocalExitRoot: sc.NewLocalExitRoot,
 		Leaves:           make([]CertificateLeaf, 0, len(sc.BridgeExits)),
 	}

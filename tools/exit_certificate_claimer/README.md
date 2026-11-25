@@ -79,7 +79,10 @@ Relative paths resolve against the directory containing the config file.
 | `l1InfoTreeDBPath` | yes | path to the l1infotreesync SQLite DB |
 | `stepWaitResultPath` | yes (unless `runSource`) | path to `step-wait-result.json` (the WAIT step's L1 settlement record) |
 | `pendingBridgesPath` | no | path to `step-pending-l2-bridges.json` (PENDING_CLAIMS step output); when set, those bridges are also served by `/bridges` and `/claim-params` |
-| `runSource` | no | archive of the run to serve, `gs://<bucket>/<prefix>` (see [Serving an archived run](#serving-an-archived-run)); the four run data paths above must then be left empty |
+| `runSource` | no | archive of the run to serve, `gs://<bucket>/<base>/<networkID>/<height>`, or the archive base `gs://<bucket>/<base>` together with `runSourceHeight` (see [Serving an archived run](#serving-an-archived-run)); the four run data paths above must then be left empty |
+| `runSourceHeight` | no | makes `runSource` the archive base: the run served is `<runSource>/<networkId>/<runSourceHeight>` (`networkId` is then required). `0` is a valid height |
+| `followIntervalSeconds` | no (default `0`: disabled) | [follow mode](#follow-mode): look every that many seconds for the run of the next certificate height and switch to it without a restart. Needs `runSource` |
+| `followCleanupOldRuns` | no (default `true`) | in follow mode, remove the local copy of a run once the next one is being served |
 | `runDataDir` | no (default `archive-cache` next to the config) | base directory `runSource` is downloaded into |
 | `networkId` | no | source network; defaults to the certificate's `network_id` |
 | `messageRoutes` | no | list of [message routes](#message-routes): how API v2 decodes the beneficiary of `Message` exits |
@@ -177,6 +180,16 @@ the output directory, the claimer can load the run data from there:
   `options.archiveCacheDir` (by default `archive-cache` next to `options.outputDir`); the L1 Info Tree DB
   stays in `options.outputDir`.
 
+The run is named in one of two ways:
+
+- **The run itself:** `runSource = "gs://<bucket>/runs/1/0000000005"` — a prefix that ends with
+  `/<networkID>/<height as 10 digits>`, the layout exit_certificate archives runs in.
+- **The archive base plus a height:** `runSource = "gs://<bucket>/runs"`, `runSourceHeight = 5` and
+  `networkId = 1` (`--run-source gs://<bucket>/runs --run-source-height 5` with a derived config, which takes
+  the network from `l2NetworkId`). The claimer serves `<base>/<networkId>/<height>`.
+
+(A prefix of any other shape is still accepted as a run, but it cannot be followed.)
+
 On startup, before anything else, the claimer downloads into `<runDataDir>/<bucket>/<prefix>/` only what it
 serves — the certificate (`exit-certificate-full.json` for a delta run, else `exit-certificate-signed.json`),
 `step-g-l2bridgesyncerlite.sqlite`, `step-wait-result.json` and, when archived,
@@ -184,6 +197,13 @@ serves — the certificate (`exit-certificate-full.json` for a delta run, else `
 and CRC32C and each file's size and SHA-256 against the run's
 `archive-manifest.json`. A prefix without a manifest (incomplete upload) is refused. On a restart the files
 already there are re-verified and only missing or different ones are downloaded again.
+
+**Versions.** The manifest of an archived run has a `version` (the manifest format) and a `dataVersion` (the
+format of the run files; a manifest without it is `dataVersion` 1). This claimer supports manifest version 1
+and data version 1 (`SupportedDataVersions` in `service/archive.go`; extend it when the claimer learns to read
+a new format). A run of any other version was written by a newer exit_certificate: at **startup the claimer
+refuses it and exits** with a clear error (nothing is downloaded, and it never falls back to an older run);
+in follow mode it keeps serving the run it has (below).
 
 Read access to the bucket (`roles/storage.objectViewer`) is enough. Credentials are the Application Default
 Credentials: `gcloud auth application-default login` locally, the workload identity / service account of the
@@ -194,6 +214,66 @@ pod in a cluster (that identity must be granted `objectViewer` on the bucket), o
 ./exit-certificate-claimer --exit-certificate-config parameters.toml \
   --run-source gs://polygonlabs-zkevm-prod-let-archive/runs/1/0000000005   # network 1, certificate height 5
 ```
+
+### Follow mode
+
+A running claimer serves one run. With follow mode it moves on its own to the run of each new certificate
+(each delta) as soon as it is archived, with no restart and no downtime:
+
+```toml
+runSource             = "gs://<bucket>/runs"   # or the run itself: gs://<bucket>/runs/1/0000000005
+runSourceHeight       = 5                      # the run to start from (only with the base)
+networkId             = 1
+followIntervalSeconds = 60
+#followCleanupOldRuns = false                  # keep the local copy of the runs left behind
+```
+
+```bash
+# derived config
+./exit-certificate-claimer --exit-certificate-config parameters.toml \
+  --run-source gs://<bucket>/runs --run-source-height 5 --follow-interval-seconds 60
+```
+
+Flags (derived config only; each has an environment variable): `--run-source-height`
+(`CLAIMER_RUN_SOURCE_HEIGHT`), `--follow-interval-seconds` (`CLAIMER_FOLLOW_INTERVAL_SECONDS`),
+`--follow-keep-old-runs` (`CLAIMER_FOLLOW_KEEP_OLD_RUNS`, the opposite of `followCleanupOldRuns`).
+
+How it works, serving the run of height `h`:
+
+1. Every `followIntervalSeconds` it reads `<base>/<networkID>/<h+1>/archive-manifest.json` — **one request**,
+   no listing of the bucket (read access to objects is enough). No manifest there means nothing new: either
+   nothing was archived at `h+1` yet, or its upload did not complete (the manifest is uploaded last).
+2. When the manifest is there, it downloads and verifies the run into its own directory
+   (`<runDataDir>/<bucket>/<base>/<networkID>/<h+1>/`), loads it, and syncs the L1 Info Tree until that run's
+   settlement GER is indexed (so `l1Sync.enabled` is needed, unless the DB already has it).
+3. Only then it swaps the run it serves, in memory. Requests in flight finish on the run they started with;
+   the old run's database is closed once none uses it.
+4. It checks `h+2` right away, so several runs archived while it was down or busy are applied one after
+   another, in height order.
+
+**If anything fails** (the archive cannot be read, a file does not match the manifest, L1 is unreachable, the
+run's certificate is not the one expected at that height, …) the claimer **keeps serving the run it has**,
+logs a warning and tries again at the next check. What was already downloaded or synced is kept. One attempt
+to prepare a run is bounded to 1 hour.
+
+**A next run of a version the claimer does not support is never switched to.** The claimer keeps serving the
+current run, logs a warning on every check and sets `follow.blocked_by_unsupported_version` in `/health`:
+upgrade the claimer. It never stops serving because of a newer run.
+
+`/claimer/v2/health` (and the kept `/claimer/v1/health`) reports the run being served (`run`: `source`,
+`height`, `certificate_hash`, `data_version`) and the follow state (`follow`: next prefix it looks at, time and result of the last check,
+the unsupported-version flag); see [SPEC.md](SPEC.md#run-and-follow-fields-of-health).
+
+Things to know:
+
+- **Runs are applied strictly in order.** If the run of `h+1` was never archived the claimer stays at `h`,
+  even if `h+2` is there. It does not detect that gap by itself (see the open points in SPEC.md): compare
+  `run.height` in `/health` with the network's settled height.
+- **Disk.** Each run is downloaded whole (its exit-tree DB is ~3 GB compressed and ~10 GB on disk on mainnet).
+  The directory of the run left behind is removed after the switch unless `followCleanupOldRuns = false`.
+- **Restart.** The claimer starts from the run the config names, then catches up through the following ones.
+  Updating `runSourceHeight` (or `runSource`) to the latest height saves downloading the ones in between.
+- A claim built from an older run stays valid on L1: it is anchored to that run's own settlement.
 
 ## HTTP API
 
