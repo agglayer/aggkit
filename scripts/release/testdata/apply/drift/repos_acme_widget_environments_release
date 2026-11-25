@@ -1,0 +1,1 @@
+{"name":"release","can_admins_bypass":true,"protection_rules":[{"id":1,"type":"required_reviewers","prevent_self_review":false,"reviewers":[{"type":"User","reviewer":{"id":9,"login":"someone"}}]}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}

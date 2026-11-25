@@ -22,6 +22,27 @@ Nothing reaches `aggkit` before the approval. These checks only hold if the sett
 
 Names used below: org `agglayer`, repository `agglayer/aggkit`, teams `release-approvers` and `release-manager`, environment `release`.
 
+## Applying the settings with the script
+
+Steps 2, 3 and 4 below can be applied with one idempotent script, `scripts/release/apply_release_settings.sh`. It needs `gh` and `jq`, and a token with repository admin access to `agglayer/aggkit` (scope `repo`) and read access to the organization teams (`read:org`).
+
+```bash
+scripts/release/apply_release_settings.sh --repo agglayer/aggkit            # dry run
+scripts/release/apply_release_settings.sh --repo agglayer/aggkit --apply    # make the changes
+```
+
+Without `--apply` it only reads settings. It prints every `gh api` call it would make, with a diff against the live state, so the output is what to review before applying. Running it again changes nothing once the settings match. It never creates teams, changes packages, or sets secrets: for those it prints the text to send to the people who own them. It needs the two teams of step 1 to exist; until they do, the dry run shows placeholder ids and `--apply` writes only the branch rules.
+
+What it sets:
+
+- A tag ruleset `release-tags` on `refs/tags/v*`: creation, update, deletion and force pushes are restricted to the team `release-manager`. An existing `OrganizationAdmin` bypass entry of the same ruleset is kept; any other bypass actor is removed.
+- Branch rules on `develop`, `release/*` (and `release/*/*` with components): a pull request with at least one approval, no deletion and no force push. They are added to the existing repository ruleset `Merge only PR ruleset` (override the name with `BRANCH_RULESET_NAME`) instead of a second ruleset, and nothing already in it is removed. If no such ruleset exists, one with that name is created.
+- The environment `release`: required reviewers `release-approvers`, prevent self-review, administrators cannot bypass, deployment only from tags `v*` (other deployment policies are removed).
+
+`--components` takes a comma separated list of `legacy`, `aggkit`, `ger_validator_signer`, `sdk` and `dev_ui`; the default is `legacy`, the layout described on this page. A component other than `legacy` gets an environment `release-<component>` that deploys only from tags `<component>/v*`, the tag ruleset also covers `refs/tags/*/v*`, and the branch rules also cover `release/*/*`. The tests of the script are `scripts/release/apply_release_settings_test.sh`.
+
+After applying, run the settings check (step 8). The package and secret steps (5 to 7) stay manual.
+
 ## Steps
 
 ### 1. Create the teams
@@ -62,7 +83,7 @@ gh api -X POST repos/agglayer/aggkit/environments/release/deployment-branch-poli
   -f name='v*' -f type=tag
 ```
 
-Remove any pre-existing branch policy on the environment: only the tag policy `v*` should remain.
+Remove any pre-existing branch policy on the environment: only the tag policy `v*` should remain. The script does all of this (see above).
 
 Confirm:
 
@@ -97,7 +118,7 @@ JSON
 
 For an organization-level ruleset, post to `orgs/agglayer/rulesets` and add `"repository_name": {"include": ["aggkit"], "exclude": []}` to `conditions`.
 
-Confirm: `gh api repos/agglayer/aggkit/rulesets --jq '.[] | {name, target, enforcement}'` lists the ruleset as active. Then check that creating a `v*` tag as a normal maintainer is refused: `git push origin test-tag:refs/tags/v0.0.0-check` must be rejected (delete nothing if it is not).
+The script creates this ruleset under the name `release-tags`. Confirm: `gh api repos/agglayer/aggkit/rulesets --jq '.[] | {name, target, enforcement}'` lists the ruleset as active. Then check that creating a `v*` tag as a normal maintainer is refused: `git push origin test-tag:refs/tags/v0.0.0-check` must be rejected (delete nothing if it is not).
 
 ### 4. Protect `develop` and `release/*`
 
@@ -107,13 +128,15 @@ UI: Repository -> Settings -> Rules -> Rulesets -> New branch ruleset, targeting
 - No direct pushes (do not add bypass actors; the settings check fails when a ruleset that applies to these branches has any).
 - Restrict deletions and block force pushes.
 
+The repository already has a ruleset that requires pull requests on the default branch. The script extends it with `release/*` rather than adding a second one; the commands below are the manual alternative when no such ruleset exists.
+
 ```bash
 gh api -X POST repos/agglayer/aggkit/rulesets --input - <<'JSON'
 {
   "name": "protected-branches",
   "target": "branch",
   "enforcement": "active",
-  "conditions": {"ref_name": {"include": ["refs/heads/develop", "refs/heads/release/**"], "exclude": []}},
+  "conditions": {"ref_name": {"include": ["refs/heads/develop", "refs/heads/release/*", "refs/heads/release/*/*"], "exclude": []}},
   "rules": [
     {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "dismiss_stale_reviews_on_push": true, "require_code_owner_review": false, "require_last_push_approval": false, "required_review_thread_resolution": false}},
     {"type": "deletion"},
@@ -185,7 +208,7 @@ From a checkout of the repository, with `gh` and `jq` available and enough acces
 scripts/release/check_release_settings.sh
 ```
 
-Optional: `--json` prints the results as JSON; the environment variables `REPO`, `ORG`, `APPROVERS_TEAM`, `RELEASE_TEAM`, `ENVIRONMENT` and `REGISTRY_SECRETS` override the defaults (`agglayer/aggkit`, `agglayer`, `release-approvers`, `release-manager`, `release`, `RELEASE_REGISTRY_USER RELEASE_REGISTRY_TOKEN`).
+Optional: `--json` prints the results as JSON; `--repo owner/name` selects another repository and `--components legacy` is accepted for symmetry with the apply script (it is the only value for now); the environment variables `REPO`, `ORG`, `APPROVERS_TEAM`, `RELEASE_TEAM`, `ENVIRONMENT` and `REGISTRY_SECRETS` override the defaults (`agglayer/aggkit`, `agglayer`, `release-approvers`, `release-manager`, `release`, `RELEASE_REGISTRY_USER RELEASE_REGISTRY_TOKEN`).
 
 Expected: every line is `PASS`, except the package control, which prints `MANUAL` and must be confirmed by hand as in steps 5 and 6. The check lists the names of the environment secrets (`environment-secrets`); it cannot tell whether the same names also exist as repository or organization secrets, so confirm that with the commands of step 6. If the token cannot read environment secrets (this needs repository admin access), that line prints `MANUAL` instead. The script exits non-zero when any control prints `FAIL`. The script only reads settings; it changes nothing.
 

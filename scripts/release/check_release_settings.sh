@@ -3,7 +3,11 @@
 # Read-only: only GET calls are made through the GitHub CLI.
 # Branch rules are read from rulesets only; classic branch protection is not checked.
 #
-# Usage: check_release_settings.sh [--json]
+# Usage: check_release_settings.sh [--repo owner/name] [--components legacy] [--json]
+#   --repo        repository to check (same as the REPO variable)
+#   --components  what to check; only `legacy` (environment `release`, tags `v*`)
+#                 is supported yet, the same option and values as
+#                 apply_release_settings.sh
 # Env:   REPO (agglayer/aggkit), ORG (owner of REPO), APPROVERS_TEAM
 #        (release-approvers), RELEASE_TEAM (release-manager), ENVIRONMENT (release),
 #        REGISTRY_SECRETS (space separated names of the environment secrets that
@@ -13,7 +17,6 @@
 set -uo pipefail
 
 REPO="${REPO:-agglayer/aggkit}"
-ORG="${ORG:-${REPO%%/*}}"
 APPROVERS_TEAM="${APPROVERS_TEAM:-release-approvers}"
 RELEASE_TEAM="${RELEASE_TEAM:-release-manager}"
 ENVIRONMENT="${ENVIRONMENT:-release}"
@@ -21,10 +24,22 @@ REGISTRY_SECRETS="${REGISTRY_SECRETS:-RELEASE_REGISTRY_USER RELEASE_REGISTRY_TOK
 TAG_PATTERN='v*'
 
 JSON=0
-case "${1:-}" in
-  --json) JSON=1 ;;
-  "") ;;
-  *) echo "usage: $0 [--json]" >&2; exit 2 ;;
+COMPONENTS=legacy
+usage() { echo "usage: $0 [--repo owner/name] [--components legacy] [--json]" >&2; exit 2; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1; shift ;;
+    --repo) [ $# -ge 2 ] || usage; REPO="$2"; shift 2 ;;
+    --repo=*) REPO="${1#--repo=}"; shift ;;
+    --components) [ $# -ge 2 ] || usage; COMPONENTS="$2"; shift 2 ;;
+    --components=*) COMPONENTS="${1#--components=}"; shift ;;
+    *) usage ;;
+  esac
+done
+ORG="${ORG:-${REPO%%/*}}"
+case "$COMPONENTS" in
+  legacy) ;;
+  *) echo "unsupported --components '$COMPONENTS': only legacy is checked yet" >&2; exit 2 ;;
 esac
 
 for tool in gh jq; do
@@ -63,6 +78,16 @@ api() {
   return 1
 }
 
+# ruleset_detail ID SOURCE_TYPE ORG: the detail of a ruleset that applies to REPO,
+# stored in API_BODY. The repository endpoint serves rulesets inherited from the
+# organization to anyone with read access; the organization endpoint needs more
+# rights and is only the fallback.
+ruleset_detail() {
+  api "repos/$REPO/rulesets/$1" && return 0
+  [ "$2" = Organization ] || return 1
+  api "orgs/$3/rulesets/$1"
+}
+
 # --- 4 (done first: the tag ruleset check needs the release team id) -------
 TEAM_ID=""
 check_teams() {
@@ -94,11 +119,7 @@ check_tag_ruleset() {
   ids="$(jq -r '.[] | "\(.id)\t\(.source_type // "Repository")\t\(.source // "")"' <<<"$list")"
   while IFS=$'\t' read -r id summary src; do
     [ -n "$id" ] || continue
-    if [ "$summary" = Organization ]; then
-      api "orgs/${src:-$ORG}/rulesets/$id" || continue
-    else
-      api "repos/$REPO/rulesets/$id" || continue
-    fi
+    ruleset_detail "$id" "$summary" "${src:-$ORG}" || continue
     detail="$API_BODY"
     ok="$(jq -r --arg pat "refs/tags/$TAG_PATTERN" '
       def covers: ((.conditions.ref_name.include // []) | any(. == $pat or . == "~ALL" or . == "refs/tags/**" or . == "refs/tags/*"))
@@ -186,7 +207,7 @@ check_environment_secrets() {
 # Only rulesets are inspected (rules/branches returns ruleset rules); classic
 # branch protection is not read and is reported as missing rules.
 check_branch_rules() {
-  local branch rules refs problems rid rsrc rbody bypass branches=()
+  local branch rules refs problems rid rsrc rbody bypass hidden branches=()
   if api "repos/$REPO/git/matching-refs/heads/release/" paginate; then refs="$API_BODY"
     while IFS= read -r branch; do
       [ -n "$branch" ] && branches+=("$branch")
@@ -200,6 +221,7 @@ check_branch_rules() {
     fi
     rules="$API_BODY"
     problems=""
+    hidden=""
     jq -e 'any(.[]; .type == "pull_request" and (.parameters.required_approving_review_count // 0) >= 1)' <<<"$rules" >/dev/null \
       || problems="$problems pull_request with at least 1 approval missing (found $(jq -r '[.[] | select(.type == "pull_request") | .parameters.required_approving_review_count] | if length == 0 then "no pull_request rule" else join(",") end' <<<"$rules"));"
     jq -e 'any(.[]; .type == "deletion")' <<<"$rules" >/dev/null || problems="$problems deletion not forbidden;"
@@ -207,16 +229,18 @@ check_branch_rules() {
     # Bypass actors of every ruleset that contributes a rule to this branch.
     while IFS=$'\t' read -r rid rsrc; do
       [ -n "$rid" ] || continue
-      if [ "$rsrc" = Organization ]; then
-        api "orgs/$ORG/rulesets/$rid" || { problems="$problems cannot read bypass actors of ruleset $rid (HTTP $API_STATUS);"; continue; }
-      else
-        api "repos/$REPO/rulesets/$rid" || { problems="$problems cannot read bypass actors of ruleset $rid (HTTP $API_STATUS);"; continue; }
-      fi
+      ruleset_detail "$rid" "$rsrc" "$ORG" || { problems="$problems cannot read bypass actors of ruleset $rid (HTTP $API_STATUS);"; continue; }
       rbody="$API_BODY"
+      if jq -e '.bypass_actors == null' <<<"$rbody" >/dev/null; then
+        hidden="$hidden '$(jq -r '.name' <<<"$rbody")'"
+        continue
+      fi
       bypass="$(jq -r '[.bypass_actors[]? | "\(.actor_type)#\(.actor_id // "-")"] | join(", ")' <<<"$rbody")"
       [ -z "$bypass" ] || problems="$problems ruleset '$(jq -r '.name' <<<"$rbody")' has bypass actors: $bypass;"
     done < <(jq -r '[.[] | select(.ruleset_id != null) | "\(.ruleset_id)\t\(.ruleset_source_type // "Repository")"] | unique | .[]' <<<"$rules")
-    if [ -z "$problems" ]; then
+    if [ -z "$problems" ] && [ -n "$hidden" ]; then
+      report MANUAL "branch-rules[$branch]" "pull_request with at least 1 approval, deletion and force push forbidden; the bypass actors of the organization ruleset$hidden are not visible with this token (they need organization admin), so confirm that list is empty at https://github.com/organizations/$ORG/settings/rules"
+    elif [ -z "$problems" ]; then
       report PASS "branch-rules[$branch]" "pull_request with at least 1 approval, deletion and force push forbidden, no bypass actors"
     else
       problems="${problems# }"; report FAIL "branch-rules[$branch]" "${problems%;}"

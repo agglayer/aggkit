@@ -72,5 +72,14 @@ expect "older release branch without rules: exit 1" "$([ "$RC" -eq 1 ]; echo $?)
 run pass --json
 expect "--json is a valid array" "$(jq -e 'type == "array" and length > 0' <<<"$OUT" >/dev/null; echo $?)"
 
+run org_hidden
+expect "org ruleset with hidden bypass actors: MANUAL, not PASS" "$(has '^MANUAL branch-rules\[develop\].*not visible'; echo $?)"
+expect "org ruleset with hidden bypass actors: exit 0" "$([ "$RC" -eq 0 ]; echo $?)"
+
+run pass --repo acme/widget --components legacy
+expect "--repo and --components legacy are accepted" "$([ "$RC" -eq 0 ]; echo $?)"
+run pass --components aggkit
+expect "unsupported component: exit 2" "$([ "$RC" -eq 2 ]; echo $?)"
+
 [ "$FAILS" -eq 0 ] || { echo "$FAILS check(s) failed"; exit 1; }
 echo "all tests passed"
