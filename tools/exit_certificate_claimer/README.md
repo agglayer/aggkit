@@ -254,7 +254,8 @@ How it works, serving the run of height `h`:
 **If anything fails** (the archive cannot be read, a file does not match the manifest, L1 is unreachable, the
 run's certificate is not the one expected at that height, …) the claimer **keeps serving the run it has**,
 logs a warning and tries again at the next check. What was already downloaded or synced is kept. One attempt
-to prepare a run is bounded to 1 hour.
+to prepare a run is bounded to 1 hour; an L1 sync in progress keeps running across attempts and stops once the
+run's settlement is indexed.
 
 **A next run of a version the claimer does not support is never switched to.** The claimer keeps serving the
 current run, logs a warning on every check and sets `follow.blocked_by_unsupported_version` in `/health`:

@@ -70,9 +70,8 @@ func run(c *cli.Context, logger *log.Logger) error {
 			StepWaitResult: cfg.StepWaitResultPath, PendingBridges: cfg.PendingBridgesPath,
 		}
 	}
-	openL1 := func(ctx context.Context, settlementGER common.Hash) (L1InfoTreeQuerier, error) {
-		return OpenL1InfoTree(ctx, cfg.L1Sync, cfg.L1InfoTreeDBPath, settlementGER, logger)
-	}
+	// One L1 Info Tree for every run this process serves: follow mode asks for it again for each new run.
+	openL1 := newL1InfoTree(ctx, cfg.L1Sync, cfg.L1InfoTreeDBPath, logger).Open
 	initial, err := loadRun(ctx, cfg, files, openL1, logger)
 	if err != nil {
 		return err

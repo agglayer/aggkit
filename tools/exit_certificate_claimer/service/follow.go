@@ -85,9 +85,8 @@ func (r *servedRun) retire() {
 }
 
 // followPrepareTimeout bounds one attempt to prepare the next run (download, load and L1 sync). The work
-// already done is kept (downloaded files, synced L1 blocks), so the next attempt resumes from there. It is
-// generous on purpose: an attempt that times out during the L1 sync leaves the database handles of its
-// syncer open (l1infotreesync has no Close).
+// already done is kept (downloaded files, synced L1 blocks, and the L1 sync itself keeps running, see
+// l1InfoTree), so the next attempt resumes from there.
 const followPrepareTimeout = time.Hour
 
 // follower is the follow mode loop: it looks for the run of the next certificate height in the archive
