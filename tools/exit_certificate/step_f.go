@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -380,7 +381,18 @@ func sameExits(capped, original []*agglayertypes.BridgeExit) bool {
 	return true
 }
 
-// groupBridgeExitsByToken groups bridge exits from the certificate by TokenInfo.
+// amountTokenKey is the token an exit's amount is charged to, as the agglayer does
+// (BridgeExit::amount_token_info): a Transfer's token_info, or L1 ETH for a Message, whose token_info is
+// its sender.
+func amountTokenKey(exit *agglayertypes.BridgeExit) tokenKey {
+	if exit.LeafType == bridgetypes.LeafTypeMessage {
+		return tokenKey{}
+	}
+	return tokenKey{exit.TokenInfo.OriginNetwork, exit.TokenInfo.OriginTokenAddress}
+}
+
+// groupBridgeExitsByToken groups bridge exits from the certificate by the token their amount is charged to
+// (amountTokenKey). Messages without value are left out.
 func groupBridgeExitsByToken(cert *agglayertypes.Certificate) map[tokenKey][]*agglayertypes.BridgeExit {
 	groups := make(map[tokenKey][]*agglayertypes.BridgeExit)
 	if cert == nil {
@@ -390,7 +402,10 @@ func groupBridgeExitsByToken(cert *agglayertypes.Certificate) map[tokenKey][]*ag
 		if exit == nil || exit.TokenInfo == nil || exit.Amount == nil {
 			continue
 		}
-		k := tokenKey{exit.TokenInfo.OriginNetwork, exit.TokenInfo.OriginTokenAddress}
+		k := amountTokenKey(exit)
+		if exit.LeafType == bridgetypes.LeafTypeMessage && exit.Amount.Sign() == 0 {
+			continue // a message without value moves no balance
+		}
 		groups[k] = append(groups[k], exit)
 	}
 	return groups

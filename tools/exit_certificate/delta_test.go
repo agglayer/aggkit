@@ -161,7 +161,47 @@ func TestLoadDeltaExits(t *testing.T) {
 		msg := `{"bridge_exits":[{"leaf_type":"Message","token_info":` + tokenInfo +
 			`,"dest_network":0,"dest_address":"0x00000000000000000000000000000000000000d1","amount":"1"}]}`
 		_, err = LoadDeltaExits(write(t, msg), deltaTestNetworkID)
-		require.ErrorContains(t, err, "only Transfer exits")
+		require.ErrorContains(t, err, "a Message exit must have amount 0")
+
+		_, err = LoadDeltaExits(write(t, `{"bridge_exits":[{"leaf_type":2,"token_info":`+tokenInfo+
+			`,"dest_network":0,"dest_address":"0x00000000000000000000000000000000000000d1","amount":"1"}]}`),
+			deltaTestNetworkID)
+		require.ErrorContains(t, err, "leaf type 2 is invalid")
+	})
+
+	t.Run("message exits", func(t *testing.T) {
+		t.Parallel()
+		const dest = `"dest_address":"0x00000000000000000000000000000000000000d1"`
+		sender := `{"origin_network":7,"origin_token_address":"0x00000000000000000000000000000000000000c1"}`
+		message := func(tokenInfo, destNetwork, extra string) string {
+			return `{"bridge_exits":[{"leaf_type":"Message","token_info":` + tokenInfo +
+				`,"dest_network":` + destNetwork + `,` + dest + `,` + extra + `}]}`
+		}
+		// amount 0, and the metadata (the message) kept as given.
+		exits, err := LoadDeltaExits(write(t, message(sender, "0", `"amount":"0","metadata":"beef"`)),
+			deltaTestNetworkID)
+		require.NoError(t, err)
+		require.Equal(t, bridgetypes.LeafTypeMessage, exits[0].LeafType)
+		require.Equal(t, 0, exits[0].Amount.Sign())
+		require.Equal(t, []byte{0xbe, 0xef}, exits[0].Metadata)
+
+		zeroSender := `{"origin_network":7,"origin_token_address":"0x0000000000000000000000000000000000000000"}`
+		otherNetwork := `{"origin_network":0,"origin_token_address":"0x00000000000000000000000000000000000000c1"}`
+		for name, tc := range map[string]struct{ doc, want string }{
+			"with value":        {message(sender, "0", `"amount":"3","metadata":"beef"`), "must have amount 0"},
+			"without metadata":  {message(sender, "0", `"amount":"0"`), "needs a non-empty metadata"},
+			"null metadata":     {message(sender, "0", `"amount":"0","metadata":null`), "needs a non-empty metadata"},
+			"empty metadata":    {message(sender, "0", `"amount":"0","metadata":""`), "needs a non-empty metadata"},
+			"0x metadata":       {message(sender, "0", `"amount":"0","metadata":"0xbeef"`), "without the 0x prefix"},
+			"without amount":    {message(sender, "0", `"metadata":"beef"`), "amount"},
+			"zero sender":       {message(zeroSender, "0", `"amount":"0","metadata":"beef"`), "cannot be the zero address"},
+			"not from the L2":   {message(otherNetwork, "0", `"amount":"0","metadata":"beef"`), "must be the exiting network 7"},
+			"to the L2 itself":  {message(sender, "7", `"amount":"0","metadata":"beef"`), "is the exiting network itself"},
+			"without the token": {message("null", "0", `"amount":"0","metadata":"beef"`), "token info is invalid"},
+		} {
+			_, err := LoadDeltaExits(write(t, tc.doc), deltaTestNetworkID)
+			require.ErrorContains(t, err, tc.want, name)
+		}
 	})
 }
 

@@ -22,6 +22,7 @@ var (
 )
 
 const (
+	recL2Network     = 1      // network ID of the exiting L2
 	recNativePending = "1000" // pending native SC-locked
 	recTokenPending  = "500"  // pending ERC-20 SC-locked
 )
@@ -89,7 +90,7 @@ func TestParseRecoveryFile(t *testing.T) {
 
 func TestApplyRecoveries_UpdatesBalances(t *testing.T) {
 	st := newRecoveriesState()
-	out, err := applyRecoveries(st, []recoveryCase{
+	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("c1", "h1", recLocked1, recDest1,
 			RecoveryFund{Token: "native", Amount: "100"}, RecoveryFund{Token: recWrapped.Hex(), Amount: "50"}),
 		recCase("c2", "h2", recLocked2, recDest1, RecoveryFund{Token: "native", Amount: "30"}),
@@ -126,10 +127,10 @@ func TestApplyRecoveries_UpdatesBalances(t *testing.T) {
 func TestApplyRecoveries_Idempotent(t *testing.T) {
 	st := newRecoveriesState()
 	c := recCase("c1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"})
-	_, err := applyRecoveries(st, []recoveryCase{c})
+	_, err := applyRecoveries(st, recL2Network, []recoveryCase{c})
 	require.NoError(t, err)
 
-	out, err := applyRecoveries(st, []recoveryCase{c}) // same case hash, again
+	out, err := applyRecoveries(st, recL2Network, []recoveryCase{c}) // same case hash, again
 	require.NoError(t, err)
 	require.Equal(t, []string{"c1"}, out.Skipped)
 	require.Empty(t, out.Applied)
@@ -142,7 +143,7 @@ func TestApplyRecoveries_SameCaseTwiceInBatch(t *testing.T) {
 	c := recCase("c1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"})
 	dup := c
 	dup.Source = "c1-copy"
-	out, err := applyRecoveries(st, []recoveryCase{c, dup})
+	out, err := applyRecoveries(st, recL2Network, []recoveryCase{c, dup})
 	require.NoError(t, err)
 	require.Equal(t, []string{"c1-copy"}, out.Skipped)
 	require.Equal(t, "900", st.SC[0].PendingSCLockedBalance)
@@ -180,7 +181,7 @@ func TestApplyRecoveries_Errors_LeaveStateUntouched(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			st := newRecoveriesState()
-			_, err := applyRecoveries(st, tc.cases)
+			_, err := applyRecoveries(st, recL2Network, tc.cases)
 			require.ErrorContains(t, err, tc.want)
 			require.Equal(t, newRecoveriesState(), st, "state must not change on error (all or nothing)")
 		})
@@ -189,10 +190,10 @@ func TestApplyRecoveries_Errors_LeaveStateUntouched(t *testing.T) {
 
 func TestApplyRecoveries_RejectsContractAlreadyInLedger(t *testing.T) {
 	st := newRecoveriesState()
-	_, err := applyRecoveries(st, []recoveryCase{
+	_, err := applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("first", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.NoError(t, err)
-	_, err = applyRecoveries(st, []recoveryCase{
+	_, err = applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("second", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.ErrorContains(t, err, "already recovered")
 	require.ErrorContains(t, err, "first")
@@ -203,7 +204,7 @@ func TestApplyRecoveries_RejectsContractAlreadyInLedger(t *testing.T) {
 // the pending balance of the token.
 func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
 	st := newRecoveriesState()
-	out, err := applyRecoveries(st, []recoveryCase{
+	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("owner1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "10"}),
 		recCase("owner2", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "20"}),
 	})
@@ -212,19 +213,19 @@ func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
 	require.Len(t, st.Ledger, 2)
 
 	// a later batch: a third owner is fine, a repeat of owner 1 is not.
-	_, err = applyRecoveries(st, []recoveryCase{
+	_, err = applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("owner3", "h3", recLocked1, "0x5555555555555555555555555555555555555555",
 			RecoveryFund{Token: "native", Amount: "30"}),
 	})
 	require.NoError(t, err)
-	_, err = applyRecoveries(st, []recoveryCase{
+	_, err = applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("owner1-again", "h4", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 	})
 	require.ErrorContains(t, err, "already recovered")
 
 	// the pending balance still bounds the sum over all the owners.
 	st2 := newRecoveriesState()
-	_, err = applyRecoveries(st2, []recoveryCase{
+	_, err = applyRecoveries(st2, recL2Network, []recoveryCase{
 		recCase("owner1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "600"}),
 		recCase("owner2", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "401"}),
 	})
@@ -234,7 +235,7 @@ func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
 func TestApplyRecoveries_InconsistentStepF(t *testing.T) {
 	st := newRecoveriesState()
 	st.Checks[0].SkippedSCLockedAmount = "10" // less than the pending in step C
-	_, err := applyRecoveries(st, []recoveryCase{
+	_, err := applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("c", "h", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"})})
 	require.ErrorContains(t, err, "inconsistent")
 }
@@ -370,7 +371,7 @@ func TestRunRecoveries_EndToEndAndChaining(t *testing.T) {
 // get a message that says so, not the ledger one.
 func TestApplyRecoveries_SameContractTokenInBatchMessage(t *testing.T) {
 	st := newRecoveriesState()
-	_, err := applyRecoveries(st, []recoveryCase{
+	_, err := applyRecoveries(st, recL2Network, []recoveryCase{
 		recCase("x.tgz", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 		recCase("y/recovery.json", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 	})

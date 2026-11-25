@@ -23,12 +23,14 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 // Recoveries step (delta mode, `--step recoveries`).
 //
 // It turns the recoveries already verified through the zkevm-proof-of-ownership-kit (one `recovery.json`
-// per case, optionally packed in the kit's .tgz) into the delta exits file of a delta run
+// per case — legacy format or version 1, see recoveries_v1.go — optionally packed in the kit's .tgz) into the
+// delta exits file of a delta run
 // (options.deltaExitsFile) and keeps the balance files of the first run up to date, so the funds
 // released by every recovery are accounted for exactly once:
 //
@@ -75,24 +77,42 @@ type RecoveryFund struct {
 	Symbol string `json:"symbol,omitempty"`
 }
 
-// RecoveryFile is the kit's recovery.json: which funds, from which locked contract, to which wallet.
+// RecoveryFile is the kit's legacy-format recovery.json (no `version` field): which funds, from which locked
+// contract, to which wallet. Version 1 is RecoveryFileV1 (recoveries_v1.go).
 type RecoveryFile struct {
 	LockedContract string         `json:"locked_contract"`
 	Destination    string         `json:"destination"`
 	Funds          []RecoveryFund `json:"funds"`
 }
 
-// RecoveryLedgerEntry records one applied (case, token) so a case is never applied twice.
+// RecoveryLedgerEntry records one applied (case, token) — legacy format — or (case, output) — version 1 — so a
+// case is never applied twice. The fields added for version 1 are omitted when empty, so the entries of the
+// legacy format keep their shape.
 type RecoveryLedgerEntry struct {
-	CaseHash           string         `json:"caseHash"`
-	Source             string         `json:"source"`
-	LockedContract     common.Address `json:"lockedContract"`
+	CaseHash string `json:"caseHash"`
+	Source   string `json:"source"`
+	// RecoveryHash is the sha256 of the case's recovery.json (absent in entries written by older versions).
+	RecoveryHash string `json:"recoveryHash,omitempty"`
+	// Version of the case's recovery.json: absent for the legacy format.
+	Version int `json:"version,omitempty"`
+	// LockedContract is the legacy format's locked_contract (version 1 does not name it).
+	LockedContract *common.Address `json:"lockedContract,omitempty"`
+	// LeafType is the version-1 output's leaf_type (Transfer / Message); absent = Transfer.
+	LeafType           string         `json:"leafType,omitempty"`
 	Destination        common.Address `json:"destination"`
-	Token              common.Address `json:"token"` // L2 token (zero address = native)
+	DestinationNetwork uint32         `json:"destinationNetwork,omitempty"`
+	// Token is the L2 token whose balance the entry consumes (zero address = native, and in a Message, which
+	// consumes none).
+	Token common.Address `json:"token"`
+	// OriginNetwork / OriginTokenAddress are the exit's token_info: the token, or a Message's sender.
 	OriginNetwork      uint32         `json:"originNetwork"`
 	OriginTokenAddress common.Address `json:"originTokenAddress"`
 	Amount             string         `json:"amount"`
+	// Metadata is the version-1 output's leaf metadata (0x hex); absent = empty.
+	Metadata string `json:"metadata,omitempty"`
 }
+
+func (l *RecoveryLedgerEntry) isMessage() bool { return l.LeafType == recoveryLeafMessage }
 
 // recoveryCase is a recovery.json plus where it came from and its case hash.
 type recoveryCase struct {
@@ -101,7 +121,16 @@ type recoveryCase struct {
 	// RecoveryHash is the sha256 of recovery.json alone, whatever the packaging: the same case delivered as a
 	// .tgz and as its extracted files has the same RecoveryHash (but a different CaseHash without move.sh).
 	RecoveryHash string
-	Recovery     *RecoveryFile
+	// Recovery is set for the legacy format, Exits for version 1.
+	Recovery *RecoveryFile
+	Exits    []recoveryExit
+}
+
+func (c *recoveryCase) version() int {
+	if c.Recovery != nil {
+		return recoveryVersionLegacy
+	}
+	return recoveryVersionV1
 }
 
 // recoveriesState is the balance state the step reads and writes back.
@@ -191,13 +220,19 @@ func loadRecoveryCase(file string) (*recoveryCase, error) {
 			moveSh = mv
 		}
 	}
-	rec, err := parseRecoveryFile(recJSON)
+	c := &recoveryCase{Source: file, CaseHash: recoveryCaseHash(recJSON, moveSh), RecoveryHash: hexSHA256(recJSON)}
+	version, err := recoveryFileVersion(recJSON)
+	if err == nil {
+		if version == recoveryVersionLegacy {
+			c.Recovery, err = parseRecoveryFile(recJSON)
+		} else {
+			c.Exits, err = parseRecoveryFileV1(recJSON)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return &recoveryCase{
-		Source: file, CaseHash: recoveryCaseHash(recJSON, moveSh), RecoveryHash: hexSHA256(recJSON), Recovery: rec,
-	}, nil
+	return c, nil
 }
 
 // readKitTarball extracts recovery.json (required) and move.sh (optional) from a kit .tgz. The archive is
@@ -281,7 +316,7 @@ func hexSHA256(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// parseRecoveryFile parses and validates a recovery.json with the same rules as the kit's
+// parseRecoveryFile parses and validates a legacy-format recovery.json with the same rules as the kit's
 // recovery-tx/validate-recovery.sh: no unknown fields, real addresses (not the zero/dead placeholders),
 // destination != locked_contract, a non-empty funds list, positive base-unit amounts as strings, and no
 // token listed twice.
@@ -349,22 +384,30 @@ type lockedTokenKey struct {
 }
 
 // applyRecoveries checks the cases against the state and, only if every check passes, updates the state
-// in place and returns the new exits. On any error the state is left untouched.
+// in place and returns the new exits. On any error the state is left untouched. l2NetworkID is the exiting
+// network (a version-1 Message comes from it; a Transfer cannot bridge a token native to it).
 //
-// Rules: a case already in the ledger (same case hash) is skipped; a (locked contract, token, destination)
-// already recovered by a different case is an error; per token the new recoveries must fit in the
-// pendingSCLockedBalance still left; and a token must be known in the LBT.
-func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutcome, error) {
-	wrapped := make(map[common.Address]tokenKey, len(st.LBT))
-	for _, e := range st.LBT {
-		wrapped[e.WrappedTokenAddress] = tokenKey{e.OriginNetwork, e.OriginTokenAddress}
-	}
+// Rules for every case: a case already in the ledger (same case hash) is skipped; a recovery.json already in
+// the ledger under another case hash (the same recovery re-packaged with another move.sh) is an error; per
+// token the new recoveries must fit in the pendingSCLockedBalance still left. Legacy cases: a (locked
+// contract, token, destination) already recovered by a different case is an error, and the L2 token must be
+// in the LBT. Version-1 cases: a Transfer's token_info must be an LBT origin (not a token native to the L2); a
+// Message must come from the L2, go to another network and carries no value, so it consumes no balance.
+func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCase) (*recoveriesOutcome, error) {
+	idx := newRecoveryIndex(st)
 	applied := map[string]bool{}
+	byRecoveryHash := map[string]string{} // recovery.json sha256 → case hash
 	recovered := map[lockedTokenKey]string{}
 	inLedger := map[lockedTokenKey]bool{}
 	for _, l := range st.Ledger {
 		applied[l.CaseHash] = true
-		k := lockedTokenKey{l.LockedContract, l.Token, l.Destination}
+		if l.RecoveryHash != "" {
+			byRecoveryHash[l.RecoveryHash] = l.CaseHash
+		}
+		if l.LockedContract == nil {
+			continue // version 1: no locked contract
+		}
+		k := lockedTokenKey{*l.LockedContract, l.Token, l.Destination}
 		recovered[k] = l.Source
 		inLedger[k] = true
 	}
@@ -372,49 +415,33 @@ func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutc
 	out := &recoveriesOutcome{}
 	var errs []error
 	perToken := map[tokenKey]*big.Int{}
+	accrue := func(k tokenKey, amount *big.Int) {
+		if perToken[k] == nil {
+			perToken[k] = new(big.Int)
+		}
+		perToken[k].Add(perToken[k], amount)
+	}
 	for _, c := range cases {
 		if applied[c.CaseHash] {
 			out.Skipped = append(out.Skipped, c.Source)
 			continue
 		}
-		applied[c.CaseHash] = true
-		locked := common.HexToAddress(c.Recovery.LockedContract)
-		for _, f := range c.Recovery.Funds {
-			var l2Token common.Address // zero = native
-			if strings.ToLower(f.Token) != recoveryNativeTok {
-				l2Token = common.HexToAddress(f.Token)
-			}
-			origin, ok := wrapped[l2Token]
-			if !ok {
-				errs = append(errs, fmt.Errorf("%s: token %s is not in the LBT (step-0-lbt.json)", c.Source, f.Token))
-				continue
-			}
-			dest := common.HexToAddress(c.Recovery.Destination)
-			k := lockedTokenKey{locked, l2Token, dest}
-			if prev, dup := recovered[k]; dup {
-				if inLedger[k] {
-					errs = append(errs, fmt.Errorf("%s: %s already recovered %s for %s in %s (recoveries ledger); a "+
-						"contract+token+destination is recovered once", c.Source, locked.Hex(), f.Token, dest.Hex(), prev))
-				} else {
-					errs = append(errs, fmt.Errorf("%s: %s and %s are two different cases recovering %s from %s for "+
-						"%s in this same batch (a contract+token+destination is recovered once) — if they are the "+
-						"same case in two packagings, supply it once", c.Source, prev, c.Source, f.Token,
-						locked.Hex(), dest.Hex()))
-				}
-				continue
-			}
-			recovered[k] = c.Source
-			amount, _ := new(big.Int).SetString(f.Amount, decimalBase) // validated by parseRecoveryFile
-			if perToken[origin] == nil {
-				perToken[origin] = new(big.Int)
-			}
-			perToken[origin].Add(perToken[origin], amount)
-			out.Applied = append(out.Applied, RecoveryLedgerEntry{
-				CaseHash: c.CaseHash, Source: c.Source, LockedContract: locked,
-				Destination: common.HexToAddress(c.Recovery.Destination), Token: l2Token,
-				OriginNetwork: origin.OriginNetwork, OriginTokenAddress: origin.OriginTokenAddress, Amount: f.Amount,
-			})
+		if prev, dup := byRecoveryHash[c.RecoveryHash]; dup && c.RecoveryHash != "" {
+			errs = append(errs, fmt.Errorf("%s: its %s (sha256 %s) is already in the recoveries ledger under case "+
+				"hash %s: the same recovery re-packaged with another %s is not applied twice", c.Source,
+				fileRecoveryJSON, c.RecoveryHash, prev, fileRecoveryMove))
+			continue
 		}
+		applied[c.CaseHash] = true
+		var entries []RecoveryLedgerEntry
+		var caseErrs []error
+		if c.Recovery != nil {
+			entries, caseErrs = legacyRecoveryEntries(c, idx, recovered, inLedger, accrue)
+		} else {
+			entries, caseErrs = v1RecoveryEntries(c, idx, l2NetworkID, accrue)
+		}
+		errs = append(errs, caseErrs...)
+		out.Applied = append(out.Applied, entries...)
 	}
 
 	report, capErrs := checkPendingCapacity(st, perToken)
@@ -428,8 +455,127 @@ func applyRecoveries(st *recoveriesState, cases []recoveryCase) (*recoveriesOutc
 	}
 	applyToState(st, perToken)
 	st.Ledger = append(st.Ledger, out.Applied...)
-	out.Exits = buildRecoveryExits(out.Applied)
+	exits, err := buildRecoveryExits(out.Applied)
+	if err != nil {
+		return nil, err
+	}
+	out.Exits = exits
 	return out, nil
+}
+
+// recoveryIndex resolves tokens against the LBT: L2 token → origin (legacy) and origin → L2 token (version 1).
+type recoveryIndex struct {
+	wrapped  map[common.Address]tokenKey
+	byOrigin map[tokenKey]common.Address
+}
+
+func newRecoveryIndex(st *recoveriesState) *recoveryIndex {
+	idx := &recoveryIndex{
+		wrapped:  make(map[common.Address]tokenKey, len(st.LBT)),
+		byOrigin: make(map[tokenKey]common.Address, len(st.LBT)),
+	}
+	for _, e := range st.LBT {
+		k := tokenKey{e.OriginNetwork, e.OriginTokenAddress}
+		idx.wrapped[e.WrappedTokenAddress] = k
+		idx.byOrigin[k] = e.WrappedTokenAddress
+	}
+	return idx
+}
+
+// legacyRecoveryEntries builds the ledger entries of a legacy case: one per funds[] token.
+func legacyRecoveryEntries(
+	c recoveryCase, idx *recoveryIndex, recovered map[lockedTokenKey]string, inLedger map[lockedTokenKey]bool,
+	accrue func(tokenKey, *big.Int),
+) ([]RecoveryLedgerEntry, []error) {
+	var entries []RecoveryLedgerEntry
+	var errs []error
+	locked := common.HexToAddress(c.Recovery.LockedContract)
+	dest := common.HexToAddress(c.Recovery.Destination)
+	for _, f := range c.Recovery.Funds {
+		var l2Token common.Address // zero = native
+		if strings.ToLower(f.Token) != recoveryNativeTok {
+			l2Token = common.HexToAddress(f.Token)
+		}
+		origin, ok := idx.wrapped[l2Token]
+		if !ok {
+			errs = append(errs, fmt.Errorf("%s: token %s is not in the LBT (step-0-lbt.json)", c.Source, f.Token))
+			continue
+		}
+		k := lockedTokenKey{locked, l2Token, dest}
+		if prev, dup := recovered[k]; dup {
+			if inLedger[k] {
+				errs = append(errs, fmt.Errorf("%s: %s already recovered %s for %s in %s (recoveries ledger); a "+
+					"contract+token+destination is recovered once", c.Source, locked.Hex(), f.Token, dest.Hex(), prev))
+			} else {
+				errs = append(errs, fmt.Errorf("%s: %s and %s are two different cases recovering %s from %s for "+
+					"%s in this same batch (a contract+token+destination is recovered once) — if they are the "+
+					"same case in two packagings, supply it once", c.Source, prev, c.Source, f.Token,
+					locked.Hex(), dest.Hex()))
+			}
+			continue
+		}
+		recovered[k] = c.Source
+		amount, _ := new(big.Int).SetString(f.Amount, decimalBase) // validated by parseRecoveryFile
+		accrue(origin, amount)
+		lockedAddr := locked
+		entries = append(entries, RecoveryLedgerEntry{
+			CaseHash: c.CaseHash, Source: c.Source, RecoveryHash: c.RecoveryHash, LockedContract: &lockedAddr,
+			Destination: dest, Token: l2Token,
+			OriginNetwork: origin.OriginNetwork, OriginTokenAddress: origin.OriginTokenAddress, Amount: f.Amount,
+		})
+	}
+	return entries, errs
+}
+
+// v1RecoveryEntries builds the ledger entries of a version-1 case: one per output, in order.
+func v1RecoveryEntries(
+	c recoveryCase, idx *recoveryIndex, l2NetworkID uint32, accrue func(tokenKey, *big.Int),
+) ([]RecoveryLedgerEntry, []error) {
+	var entries []RecoveryLedgerEntry
+	var errs []error
+	for i, e := range c.Exits {
+		w := fmt.Sprintf("%s: outputs[%d]", c.Source, i)
+		entry := RecoveryLedgerEntry{
+			CaseHash: c.CaseHash, Source: c.Source, RecoveryHash: c.RecoveryHash, Version: recoveryVersionV1,
+			LeafType: e.LeafType.String(), Destination: e.DestinationAddress, DestinationNetwork: e.DestinationNetwork,
+			OriginNetwork: e.TokenInfo.OriginNetwork, OriginTokenAddress: e.TokenInfo.OriginTokenAddress,
+			Amount: e.Amount.String(),
+		}
+		if len(e.Metadata) > 0 {
+			entry.Metadata = hexutil.Encode(e.Metadata)
+		}
+		if e.LeafType == bridgetypes.LeafTypeAsset {
+			if e.TokenInfo.OriginNetwork == l2NetworkID {
+				errs = append(errs, fmt.Errorf("%s: Transfer of %s, a token native to the L2 (origin network %d): a "+
+					"recovery only bridges ETH and wrapped tokens", w, e.TokenInfo.OriginTokenAddress.Hex(), l2NetworkID))
+				continue
+			}
+			l2Token, ok := idx.byOrigin[e.TokenInfo]
+			if !ok {
+				errs = append(errs, fmt.Errorf("%s: token %d/%s is not in the LBT (step-0-lbt.json)", w,
+					e.TokenInfo.OriginNetwork, e.TokenInfo.OriginTokenAddress.Hex()))
+				continue
+			}
+			entry.Token = l2Token
+			accrue(e.TokenInfo, e.Amount)
+			entries = append(entries, entry)
+			continue
+		}
+		// Message: token_info is the sender, which the bridge always puts on the L2 network. It carries no value
+		// (parseRecoveryFileV1), so it consumes no balance of this state.
+		if e.TokenInfo.OriginNetwork != l2NetworkID {
+			errs = append(errs, fmt.Errorf("%s: a Message's token_info.origin_network is the network that sent it "+
+				"(the L2, %d), got %d", w, l2NetworkID, e.TokenInfo.OriginNetwork))
+			continue
+		}
+		if e.DestinationNetwork == l2NetworkID {
+			errs = append(errs, fmt.Errorf("%s: a Message to network %d, the exiting network itself, cannot be a "+
+				"certificate exit", w, l2NetworkID))
+			continue
+		}
+		entries = append(entries, entry)
+	}
+	return entries, errs
 }
 
 // checkPendingCapacity verifies, per token, that the new recoveries fit in pendingSCLockedBalance and in
@@ -501,21 +647,50 @@ func applyToState(st *recoveriesState, perToken map[tokenKey]*big.Int) {
 	}
 }
 
-// buildRecoveryExits builds one Transfer exit to L1 per (destination, origin token), summing the amounts
-// of cases that coincide (the delta mode rejects identical exits). Sorted for a deterministic file.
-func buildRecoveryExits(applied []RecoveryLedgerEntry) []*agglayertypes.BridgeExit {
+// buildRecoveryExits builds the delta exits of the applied entries. Legacy entries become one Transfer exit to
+// L1 per (destination, origin token), summing the amounts of cases that coincide (the delta mode rejects
+// identical exits), sorted for a deterministic file. Version-1 entries follow, one exit per output, field by
+// field and in the order of the cases and of their outputs — the order of the BridgeEvents of the kit's
+// simulated move: they are never merged nor reordered.
+func buildRecoveryExits(applied []RecoveryLedgerEntry) ([]*agglayertypes.BridgeExit, error) {
 	type key struct {
 		Dest  common.Address
 		Token tokenKey
 	}
 	sums := map[key]*big.Int{}
+	var outputs []*agglayertypes.BridgeExit
 	for _, a := range applied {
-		k := key{a.Destination, tokenKey{a.OriginNetwork, a.OriginTokenAddress}}
-		if sums[k] == nil {
-			sums[k] = new(big.Int)
+		amount, ok := new(big.Int).SetString(a.Amount, decimalBase)
+		if !ok {
+			return nil, fmt.Errorf("%s: amount %q is not a base-10 integer", a.Source, a.Amount)
 		}
-		amount, _ := new(big.Int).SetString(a.Amount, decimalBase)
-		sums[k].Add(sums[k], amount)
+		token := tokenKey{a.OriginNetwork, a.OriginTokenAddress}
+		if a.Version == recoveryVersionLegacy {
+			k := key{a.Destination, token}
+			if sums[k] == nil {
+				sums[k] = new(big.Int)
+			}
+			sums[k].Add(sums[k], amount)
+			continue
+		}
+		metadata, err := ledgerMetadata(a)
+		if err != nil {
+			return nil, err
+		}
+		leafType := bridgetypes.LeafTypeAsset
+		if a.isMessage() {
+			leafType = bridgetypes.LeafTypeMessage
+		}
+		outputs = append(outputs, &agglayertypes.BridgeExit{
+			LeafType: leafType,
+			TokenInfo: &agglayertypes.TokenInfo{
+				OriginNetwork: token.OriginNetwork, OriginTokenAddress: token.OriginTokenAddress,
+			},
+			DestinationNetwork: a.DestinationNetwork,
+			DestinationAddress: a.Destination,
+			Amount:             amount,
+			Metadata:           metadata,
+		})
 	}
 	keys := make([]key, 0, len(sums))
 	for k := range sums {
@@ -530,7 +705,7 @@ func buildRecoveryExits(applied []RecoveryLedgerEntry) []*agglayertypes.BridgeEx
 		}
 		return bytes.Compare(keys[i].Token.OriginTokenAddress[:], keys[j].Token.OriginTokenAddress[:]) < 0
 	})
-	exits := make([]*agglayertypes.BridgeExit, 0, len(keys))
+	exits := make([]*agglayertypes.BridgeExit, 0, len(keys)+len(outputs))
 	for _, k := range keys {
 		exits = append(exits, &agglayertypes.BridgeExit{
 			LeafType: bridgetypes.LeafTypeAsset,
@@ -542,7 +717,19 @@ func buildRecoveryExits(applied []RecoveryLedgerEntry) []*agglayertypes.BridgeEx
 			Amount:             sums[k],
 		})
 	}
-	return exits
+	return append(exits, outputs...), nil
+}
+
+// ledgerMetadata decodes the metadata of a ledger entry (empty for the legacy format).
+func ledgerMetadata(a RecoveryLedgerEntry) ([]byte, error) {
+	if a.Metadata == "" {
+		return nil, nil
+	}
+	b, err := hexutil.Decode(a.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("%s: metadata %q: %w", a.Source, a.Metadata, err)
+	}
+	return b, nil
 }
 
 func findSCLocked(sc []SCLockedValue, k tokenKey) *SCLockedValue {
@@ -655,10 +842,16 @@ func runRecoveries(cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	log.Infof("Recoveries: %d case(s) from %s; state from %s (%d already applied)",
-		len(cases), cfg.Options.RecoveriesPath, stateDir, len(st.Ledger))
+	legacy := 0
+	for _, c := range cases {
+		if c.version() == recoveryVersionLegacy {
+			legacy++
+		}
+	}
+	log.Infof("Recoveries: %d case(s) from %s (%d legacy format, %d version %d); state from %s (%d already applied)",
+		len(cases), cfg.Options.RecoveriesPath, legacy, len(cases)-legacy, recoveryVersionV1, stateDir, len(st.Ledger))
 
-	out, err := applyRecoveries(st, cases)
+	out, err := applyRecoveries(st, cfg.L2NetworkID, cases)
 	if err != nil {
 		return fmt.Errorf("recoveries not applied (nothing written): %w", err)
 	}
@@ -706,8 +899,20 @@ func writeRecoveriesOutput(dir string, st *recoveriesState, out *recoveriesOutco
 
 func recoveriesReport(out *recoveriesOutcome) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Recoveries applied\n\nNew (case, token) entries: %d · exits: %d\n\n",
-		len(out.Applied), len(out.Exits))
+	transfers, messages := 0, 0
+	for _, e := range out.Exits {
+		if e.LeafType == bridgetypes.LeafTypeMessage {
+			messages++
+		} else {
+			transfers++
+		}
+	}
+	fmt.Fprintf(&b, "# Recoveries applied\n\nNew ledger entries: %d · exits: %d (Transfer: %d, Message: %d)\n\n",
+		len(out.Applied), len(out.Exits), transfers, messages)
+	if messages > 0 {
+		fmt.Fprintf(&b, "The %d Message exit(s) carry no value: they move no balance of this state (what they trigger "+
+			"on the destination network is not checked here).\n\n", messages)
+	}
 	b.WriteString("| origin | pending before | recovered | pending after |\n|---|---:|---:|---:|\n")
 	for _, r := range out.Report {
 		fmt.Fprintf(&b, "| %d/%s | %s | %s | %s |\n",

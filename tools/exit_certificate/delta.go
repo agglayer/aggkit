@@ -127,8 +127,8 @@ func loadPreviousRun(dir string) (*previousRun, error) {
 	}, nil
 }
 
-// LoadDeltaExits reads and validates the delta exits file. Only asset (transfer) exits are accepted,
-// with a positive amount and a token_info; message exits are not supported.
+// LoadDeltaExits reads and validates the delta exits file. Transfer exits need a positive amount; Message exits
+// (bridgeMessage, e.g. from version-1 recoveries) carry amount 0 and their own metadata, and come from the L2.
 func LoadDeltaExits(path string, l2NetworkID uint32) ([]*agglayertypes.BridgeExit, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -153,10 +153,11 @@ func LoadDeltaExits(path string, l2NetworkID uint32) ([]*agglayertypes.BridgeExi
 		return nil, fmt.Errorf("parse delta exits file %s: %w", path, err)
 	}
 	for i, be := range file.BridgeExits {
-		if err := validateDeltaExit(be, l2NetworkID); err != nil {
+		// The raw metadata first: a malformed value reaches validateDeltaExit as empty bytes.
+		if err := validateDeltaRawMetadata(rawFile.BridgeExits[i].Metadata); err != nil {
 			return nil, fmt.Errorf("delta exit %d: %w", i, err)
 		}
-		if err := validateDeltaRawMetadata(rawFile.BridgeExits[i].Metadata); err != nil {
+		if err := validateDeltaExit(be, l2NetworkID); err != nil {
 			return nil, fmt.Errorf("delta exit %d: %w", i, err)
 		}
 	}
@@ -201,14 +202,42 @@ func validateDeltaExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
 	if err := be.Validate(); err != nil {
 		return err
 	}
-	if be.LeafType != bridgetypes.LeafTypeAsset {
-		return fmt.Errorf("leaf_type %s is not supported (only Transfer exits)", be.LeafType)
-	}
-	if be.Amount == nil || be.Amount.Sign() <= 0 {
-		return errors.New("amount must be positive")
+	switch be.LeafType {
+	case bridgetypes.LeafTypeAsset:
+		if be.Amount == nil || be.Amount.Sign() <= 0 {
+			return errors.New("amount must be positive")
+		}
+	case bridgetypes.LeafTypeMessage:
+		if err := validateDeltaMessageExit(be, l2NetworkID); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("leaf_type %d is not supported", be.LeafType.Uint8())
 	}
 	if be.DestinationNetwork == l2NetworkID {
 		return fmt.Errorf("dest_network %d is the exiting network itself", be.DestinationNetwork)
+	}
+	return nil
+}
+
+// validateDeltaMessageExit checks what only applies to a Message (bridgeMessage) exit. Its token_info is not a
+// token but the sender — the bridge sets it to its own network and msg.sender, so anything else is not a leaf
+// the L2 bridge could have emitted. It carries no value (the agglayer would charge a message's amount to L1
+// ETH, which this tool does not account for) and its metadata is the message itself: mandatory, never derived.
+func validateDeltaMessageExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
+	if be.Amount == nil || be.Amount.Sign() != 0 {
+		return fmt.Errorf("a Message exit must have amount 0, got %s (messages carrying value are not supported)",
+			be.Amount)
+	}
+	if len(be.Metadata) == 0 {
+		return errors.New("a Message exit needs a non-empty metadata (the message itself): it is never derived")
+	}
+	if be.TokenInfo.OriginNetwork != l2NetworkID {
+		return fmt.Errorf("a Message's token_info.origin_network must be the exiting network %d (the sender's "+
+			"network), got %d", l2NetworkID, be.TokenInfo.OriginNetwork)
+	}
+	if be.TokenInfo.OriginTokenAddress == (common.Address{}) {
+		return errors.New("a Message's token_info.origin_token_address is its sender: it cannot be the zero address")
 	}
 	return nil
 }
@@ -652,7 +681,8 @@ func rejectDuplicateLeaves(existing, leaves []bridgesyncerlite.BridgeLeaf) error
 }
 
 // deltaRawMetadata returns each exit's raw leaf metadata, aligned by index: the metadata the delta file
-// carries, or — for the exits without it — the one the L2 bridge would embed (generateMetadata).
+// carries, or — for the Transfer exits without it — the one the L2 bridge would embed (generateMetadata). A
+// Message's metadata is the message itself: it is used as given and never derived (LoadDeltaExits requires it).
 func deltaRawMetadata(
 	ctx context.Context, cfg *Config, exits []*agglayertypes.BridgeExit,
 ) ([][]byte, error) {
@@ -660,7 +690,7 @@ func deltaRawMetadata(
 	var missing []int
 	missingExits := make([]*agglayertypes.BridgeExit, 0, len(exits))
 	for i, be := range exits {
-		if len(be.Metadata) > 0 {
+		if len(be.Metadata) > 0 || be.LeafType == bridgetypes.LeafTypeMessage {
 			raw[i] = be.Metadata
 			continue
 		}
