@@ -721,7 +721,10 @@ archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs"   # --step upload pu
 `<archiveCacheDir>/<bucket>/<prefix>/`, decompress them while checking each object's size and CRC32C and each
 file's size and SHA-256 against the manifest, and then run exactly as with a local directory. Files already in the cache with the right content are not
 downloaded again. The cache directory belongs to that one archived run: a different manifest or a file the
-manifest does not list there is an error (remove the directory). The delta records the archive URI and its
+manifest does not list there is an error (remove the directory). SQLite side files (`-wal`/`-shm`/`-journal`)
+left next to a cached database, e.g. by a process that crashed, are removed before it is reused or replaced,
+because SQLite would replay them onto it; if another process still has that database open, the download fails
+instead (`ErrFileInUse`). The delta records the archive URI and its
 manifest SHA-256 in `delta-manifest.json`. Read access to the bucket is enough.
 
 The claimer can serve an archived run too: `runSource` in its config, or `--run-source` — see the

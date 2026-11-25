@@ -24,6 +24,9 @@ var (
 	ErrChecksumMismatch = errors.New("downloaded file does not match the archive manifest")
 	// ErrCacheDirMismatch is returned by Download when the local directory holds files of another run.
 	ErrCacheDirMismatch = errors.New("the local directory does not hold this archived run")
+	// ErrFileInUse is returned by Download when a local SQLite database has side files (WAL, shared memory,
+	// rollback journal) and another process has it open: the side files are that process's, not stale.
+	ErrFileInUse = errors.New("the local file is open by another process")
 )
 
 const (
@@ -163,6 +166,10 @@ func ensureFile(ctx context.Context, store ObjectStore, loc Location, dir string
 			return false, err
 		}
 		if local.sameSource(entry) {
+			// The file matches, but SQLite would replay a stale WAL or hot journal onto it when it is opened.
+			if err := removeStaleSideFiles(dest); err != nil {
+				return false, err
+			}
 			return false, nil
 		}
 		log.Warnf("archive: %s differs from the archived file, downloading it again", dest)
@@ -174,15 +181,13 @@ func ensureFile(ctx context.Context, store ObjectStore, loc Location, dir string
 }
 
 // downloadFile streams the object into dest.partial, verifies it and renames it to dest. Stale SQLite side
-// files of dest are removed first: they would be replayed onto the new database.
+// files of dest are removed first (see removeStaleSideFiles): they would be replayed onto the new database.
 func downloadFile(ctx context.Context, store ObjectStore, name, dest string, entry FileEntry) error {
 	if err := os.MkdirAll(filepath.Dir(dest), dirPermissions); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(dest), err)
 	}
-	for _, s := range sqliteSideSuffixes {
-		if err := os.Remove(dest + s); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove stale %s: %w", dest+s, err)
-		}
+	if err := removeStaleSideFiles(dest); err != nil {
+		return err
 	}
 	tmp := dest + partialSuffix
 	if err := fetchVerified(ctx, store, name, tmp, entry); err != nil {
@@ -192,6 +197,41 @@ func downloadFile(ctx context.Context, store ObjectStore, name, dest string, ent
 	if err := os.Rename(tmp, dest); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", tmp, err)
+	}
+	return nil
+}
+
+// removeStaleSideFiles removes the SQLite side files (WAL, shared memory, rollback journal) next to dest.
+// They are never part of an archived run, and SQLite would replay a WAL or a hot journal onto dest when it
+// opens it, so a verified dest would no longer serve the archived content. If another process has dest
+// open, the side files are its own and removing them would corrupt what it sees: ErrFileInUse.
+func removeStaleSideFiles(dest string) error {
+	var stale []string
+	for _, s := range sqliteSideSuffixes {
+		_, err := os.Lstat(dest + s)
+		switch {
+		case err == nil:
+			stale = append(stale, dest+s)
+		case !errors.Is(err, os.ErrNotExist):
+			return fmt.Errorf("stat %s: %w", dest+s, err)
+		}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	inUse, err := sqliteOpenElsewhere(dest)
+	if err != nil {
+		return fmt.Errorf("check whether %s is in use: %w", dest, err)
+	}
+	if inUse {
+		return fmt.Errorf("%s has SQLite side files and another process has it open: %w (stop that process first)",
+			dest, ErrFileInUse)
+	}
+	for _, p := range stale {
+		log.Warnf("archive: removing stale %s", p)
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove stale %s: %w", p, err)
+		}
 	}
 	return nil
 }
