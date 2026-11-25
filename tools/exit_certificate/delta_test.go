@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgesync/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tools/exit_certificate/bridgesyncerlite"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -593,28 +594,52 @@ func TestRunStepG2DeltaErrors(t *testing.T) {
 // Two leaves with the same hash would be served with the same deposit count by the claimer. The check
 // runs against EVERY leaf of the previous tree (exits of previous runs and older L2 bridges), not only
 // against the previous certificate's exits.
-func TestRunStepG2DeltaRejectsDuplicateExits(t *testing.T) {
+func TestRunStepG2DeltaDuplicateExits(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := func() *Config { return &Config{L2RPCURL: gasTokenStubURL(t), Options: Options{OutputDir: t.TempDir()}} }
 
-	// The previous tree holds a leaf identical to what deltaExit(7, ...) produces, but the previous
-	// certificate does not list it (an older L2 bridge): only a leaf-level check can see it.
+	// The previous tree holds, at deposit count 2, a leaf identical to what deltaExit(7, ...) produces (an
+	// older L2 bridge: the previous certificate does not list it).
 	histLeaf := liteLeavesFromExits([]*agglayertypes.BridgeExit{deltaExit(7, deltaToken, nil)}, 3, 2,
 		0, common.Address{}, [][]byte{deltaRawMD1})
 	dir, _ := writePreviousRunLeaves(t, fileSignedCertificate, append(baseLeaves(2), histLeaf...), nil)
 	prev, err := loadPreviousRun(dir)
 	require.NoError(t, err)
-	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
+
+	// A delta exit identical to that historical leaf is accepted: it becomes a new leaf with its own deposit
+	// count (the next one), next to the old one, and the root changes.
+	c := cfg()
+	res, err := RunStepG2Delta(ctx, c, prev, &agglayertypes.Certificate{
 		BridgeExits: []*agglayertypes.BridgeExit{deltaExit(7, deltaToken, deltaRawMD1)},
 	})
-	require.ErrorContains(t, err, "identical to the leaf already in the exit tree at deposit count 2")
-	require.ErrorContains(t, err, "cannot be merged")
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), res.FirstDepositCount)
+	require.NotEqual(t, res.InitialLocalExitRoot, res.NewLocalExitRoot)
+	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: g2LiteDBPath(c)},
+		log.WithFields("module", "test"))
+	require.NoError(t, err)
+	stored, err := syncer.GetBridges(ctx)
+	require.NoError(t, err)
+	require.NoError(t, syncer.Close())
+	require.Len(t, stored, 4)
+	require.Equal(t, uint32(2), stored[2].DepositCount)
+	require.Equal(t, uint32(3), stored[3].DepositCount)
+	require.Equal(t, stored[2].Hash(), stored[3].Hash(), "two distinct leaves with the same hash")
 
-	// duplicates another delta exit
+	// Two identical exits inside the delta are still refused.
 	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
 		BridgeExits: []*agglayertypes.BridgeExit{
 			deltaExit(8, deltaToken, deltaRawMD1), deltaExit(8, deltaToken, deltaRawMD1),
+		},
+	})
+	require.ErrorContains(t, err, "delta exit 1")
+	require.ErrorContains(t, err, "identical to delta exit 0 in this run")
+
+	// ...also when both equal a historical leaf.
+	_, err = RunStepG2Delta(ctx, cfg(), prev, &agglayertypes.Certificate{
+		BridgeExits: []*agglayertypes.BridgeExit{
+			deltaExit(7, deltaToken, deltaRawMD1), deltaExit(7, deltaToken, deltaRawMD1),
 		},
 	})
 	require.ErrorContains(t, err, "identical to delta exit 0 in this run")

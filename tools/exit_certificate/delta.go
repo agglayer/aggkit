@@ -628,9 +628,10 @@ func RunStepG2Delta(
 	if err != nil {
 		return nil, err
 	}
-	if err := rejectDuplicateLeaves(existing, leaves); err != nil {
+	if err := rejectDuplicateLeaves(leaves); err != nil {
 		return nil, err
 	}
+	warnLeavesAlreadyInTree(existing, leaves)
 	newLER, err := syncer.AppendBridges(ctx, leaves)
 	if err != nil {
 		return nil, fmt.Errorf("append delta leaves to the exit tree: %w", err)
@@ -654,30 +655,50 @@ func RunStepG2Delta(
 	return result, nil
 }
 
-// rejectDuplicateLeaves fails when a new leaf has the same hash (token, destination, amount and metadata)
-// as a leaf already in the tree — an exit of a previous run or any older L2 bridge — or as another new
-// leaf. Both would be distinct tree leaves with the same hash, and the claimer indexes leaves by hash: the
-// later one overwrites the earlier deposit count, so the earlier exit could no longer be claimed.
-func rejectDuplicateLeaves(existing, leaves []bridgesyncerlite.BridgeLeaf) error {
-	seen := make(map[common.Hash]string, len(existing)+len(leaves))
-	for i := range existing {
-		seen[existing[i].Hash()] = fmt.Sprintf("the leaf already in the exit tree at deposit count %d "+
-			"(an exit of a previous run or an older L2 bridge, already settled: it cannot be merged)",
-			existing[i].DepositCount)
-	}
+// rejectDuplicateLeaves fails when two new leaves have the same hash (token or sender, destination, amount and
+// metadata): two identical exits in one delta have no reason to exist — identical Transfers are merged into
+// one — and the recoveries ledger could not tell which case each belongs to.
+//
+// A new leaf identical to one already in the tree (an exit of a previous run or an older L2 bridge) is
+// allowed: they are distinct leaves, each with its own deposit count and global index, and the claimer matches
+// certificate exits to leaves by position (see warnLeavesAlreadyInTree).
+func rejectDuplicateLeaves(leaves []bridgesyncerlite.BridgeLeaf) error {
+	seen := make(map[common.Hash]int, len(leaves))
 	for i := range leaves {
 		h := leaves[i].Hash()
 		if other, dup := seen[h]; dup {
-			return fmt.Errorf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to %s: identical leaves "+
-				"share a hash and the claimer could not tell them apart — merge delta exits that are identical "+
-				"into one (sum the amounts), or change the amount so the leaf differs from a settled one (e.g. "+
-				"split it in two different amounts)",
+			return fmt.Errorf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to delta exit %d in this "+
+				"run: identical leaves share a hash — merge delta exits that are identical into one (sum the "+
+				"amounts), or make them differ",
 				i, leaves[i].OriginNetwork, leaves[i].OriginAddress.Hex(), leaves[i].DestinationAddress.Hex(),
 				leaves[i].Amount, other)
 		}
-		seen[h] = fmt.Sprintf("delta exit %d in this run", i)
+		seen[h] = i
 	}
 	return nil
+}
+
+// warnLeavesAlreadyInTree logs the new leaves whose hash equals a leaf already in the exit tree (an exit of a
+// previous run or an older L2 bridge). It is allowed — the new leaf gets its own deposit count — but worth a
+// look: it needs a claimer that matches exits to leaves by position, since one that indexes leaves by hash
+// would serve only one of the two.
+func warnLeavesAlreadyInTree(existing, leaves []bridgesyncerlite.BridgeLeaf) {
+	if len(existing) == 0 {
+		return
+	}
+	inTree := make(map[common.Hash]uint32, len(existing))
+	for i := range existing {
+		inTree[existing[i].Hash()] = existing[i].DepositCount
+	}
+	for i := range leaves {
+		if dc, dup := inTree[leaves[i].Hash()]; dup {
+			log.Warnf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to the leaf already in the "+
+				"exit tree at deposit count %d: it is appended as a new leaf with deposit count %d (both are "+
+				"claimable separately by a claimer that matches exits to leaves by position)",
+				i, leaves[i].OriginNetwork, leaves[i].OriginAddress.Hex(), leaves[i].DestinationAddress.Hex(),
+				leaves[i].Amount, dc, leaves[i].DepositCount)
+		}
+	}
 }
 
 // deltaRawMetadata returns each exit's raw leaf metadata, aligned by index: the metadata the delta file

@@ -612,7 +612,7 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
   ```
 
   A `Message` moves no token balance, so Step F leaves it out of the per-token check (a delta of `Message` exits only has nothing to compare). It is claimed on the destination network with `claimMessage`, not `claimAsset`.
-- An exit identical to **any leaf already in the exit tree** (exits of previous runs and older L2 bridges, read from the copied lite DB) or to another delta exit — same token, destination, amount and metadata — is rejected: both would be distinct leaves with the same hash and the claimer indexes leaves by hash, so it could not tell them apart. Merge repeated delta exits into one (sum the amounts); against an already settled leaf, change the amount.
+- Two delta exits identical to each other — same token (or sender), destination, amount and metadata — are rejected: they would be two leaves with the same hash with no reason to exist. Merge repeated exits into one (sum the amounts). An exit identical to a **leaf already in the exit tree** (an exit of a previous run or an older L2 bridge, read from the copied lite DB) is accepted, with a warning in the log: it is appended as a new leaf with its own deposit count and global index, so both can be claimed separately. This needs a claimer that matches certificate exits to leaves by position; one that indexes leaves by hash would serve only one of the two.
 - `metadata`, when present, is the **raw** leaf metadata as plain hex (the tool hashes it): no `0x` prefix and even length — a malformed value is rejected instead of being silently dropped (which would regenerate it from the L2 and change the leaf). A certificate's `metadata` is the keccak hash: do not copy it here (a 32-byte value logs a warning). When absent the tool derives it from the L2 bridge the way `bridgeAsset` does: the ABI-encoded name/symbol/decimals of the L2 token for ERC-20 exits, the gas-token metadata for native exits. A `Message`'s metadata is the message itself: it is used as given, never derived, and an exit without it is rejected.
 - **The L2 RPC (`l2RpcUrl`) must still answer in delta mode**: it is used for the L2 bridge's gas token and for that metadata derivation (the exits produced by `--step recoveries` from legacy-format cases carry none; version-1 cases carry the metadata of their `BridgeEvent`s). Balances are never read from it.
 
@@ -826,8 +826,9 @@ Two `recovery.json` formats are accepted, and can be mixed in the same run:
 The exits of legacy cases come first: one Transfer exit to L1 per (destination, origin token), summing the cases
 that coincide, sorted (as before version 1 existed). The outputs of version-1 cases follow **one exit per output,
 field by field and in the same order** (the order of the kit's `BridgeEvent`s; cases in path order): they are never
-merged, sorted or re-derived, and each keeps its `metadata`. Two identical outputs therefore stay two identical
-exits, which the delta run rejects (see [Delta exits file](#delta-exits-file)). Checks, all or nothing (on any
+merged, sorted or re-derived, and each keeps its `metadata`. Two identical outputs in the same batch therefore
+stay two identical exits, which the delta run rejects; an output identical to a leaf already in the exit tree is
+accepted (see [Delta exits file](#delta-exits-file)). Checks, all or nothing (on any
 error nothing is written):
 
 - same validation as the kit's `validate-recovery.sh` of each format (no unknown fields, every field present; legacy:
