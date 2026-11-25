@@ -24,7 +24,7 @@ require (
 	github.com/invopop/jsonschema v0.14.0
 	github.com/jellydator/ttlcache/v3 v3.4.1
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.2
 	github.com/knadh/koanf/parsers/json v1.0.1
 	github.com/knadh/koanf/parsers/toml v0.1.0
 	github.com/knadh/koanf/providers/rawbytes v1.0.1
