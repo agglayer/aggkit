@@ -3,8 +3,13 @@
 # claim-all.sh — claim every pending bridge exit for all addresses tracked by an
 # exit_certificate run, by talking to the running exit_certificate_claimer service.
 #
-# For each address it enumerates the address's deposits via GET /bridges and submits
-# AgglayerBridge.claimAsset for each one through the sibling claim-asset.sh.
+# For each address it enumerates the address's deposits via GET /bridges (API v2) and submits the
+# claim of each one through the sibling claim-asset.sh: AgglayerBridge.claimAsset for a Transfer exit,
+# AgglayerBridge.claimMessage for a Message exit (the claim_method the claimer returns).
+#
+# A Message exit is reachable through two addresses: its destination contract and, when its message
+# route is configured in the claimer, its beneficiary. A deposit is claimed once per run, the first
+# time it shows up.
 #
 # The set of addresses is:
 #   - every EOA listed in <outputDir>/step-b-eoa-balances.json,
@@ -23,7 +28,7 @@
 #   L1_RPC_URL    L1 RPC endpoint (default: config .l1RpcUrl).
 #   BRIDGE_ADDRESS AgglayerBridge address on L1 (default: config .l1BridgeAddress).
 #   Signing (override the config-derived signer):
-#     PRIVATE_KEY            raw hex signing key for the claimAsset transactions
+#     PRIVATE_KEY            raw hex signing key for the claim transactions
 #     KEYSTORE               path to an encrypted keystore JSON
 #     KEYSTORE_PASSWORD      password for KEYSTORE
 #   EOA_FILE      EOA list to claim for (default: <outputDir>/step-b-eoa-balances.json); needed
@@ -59,7 +64,7 @@ usage() {
 		                     A missing scheme is assumed to be http://.
 		  L1_RPC_URL         L1 RPC endpoint (default: config .l1RpcUrl).
 		  BRIDGE_ADDRESS     AgglayerBridge address on L1 (default: config .l1BridgeAddress).
-		  PRIVATE_KEY        Raw hex signing key for the claimAsset transactions.
+		  PRIVATE_KEY        Raw hex signing key for the claim transactions.
 		  KEYSTORE           Path to an encrypted keystore JSON (alternative to PRIVATE_KEY).
 		  KEYSTORE_PASSWORD  Password for KEYSTORE.
 		                     If none of the above signer vars are set, the config's local
@@ -97,7 +102,7 @@ case "$CLAIMER_URL" in
 	http://* | https://*) ;;
 	*) CLAIMER_URL="http://${CLAIMER_URL}" ;;
 esac
-API_BASE="${CLAIMER_URL%/}/claimer/v1"
+API_BASE="${CLAIMER_URL%/}/claimer/v2"
 
 # Paths inside the config (outputDir, keystore) are relative to the config's directory.
 CONFIG_DIR="$(cd "$(dirname "$CONFIG_FILE")" && pwd)"
@@ -222,12 +227,12 @@ if [ "$DRY_RUN" != "1" ] && [ "$ASSUME_YES" != "1" ]; then
 	echo
 fi
 
-# Fetch the deposit_count list for a destination address via GET /bridges.
+# Fetch the "<deposit_count> <claim_method>" list of an address via GET /bridges.
 fetch_deposit_counts() {
 	local dest="$1" response http_code body
 	response="$(curl -sS -w $'\n%{http_code}' \
 		--get "${API_BASE}/bridges" \
-		--data-urlencode "dest_address=${dest}")" || return 1
+		--data-urlencode "address=${dest}")" || return 1
 	http_code="${response##*$'\n'}"
 	body="${response%$'\n'*}"
 	if [ "$http_code" != "200" ]; then
@@ -235,8 +240,12 @@ fetch_deposit_counts() {
 		echo "$body" | jq -r '.error // .' >&2 2>/dev/null || true
 		return 1
 	fi
-	echo "$body" | jq -r '.bridges[]?.deposit_count'
+	echo "$body" | jq -r '.bridges[]? | "\(.deposit_count) \(.claim_method)"'
 }
+
+# Deposit counts already handled in this run (a Message exit shows up for its destination contract
+# and for its beneficiary).
+declare -A handled_deposits=()
 
 total_claims=0
 total_ok=0
@@ -252,7 +261,7 @@ declare -a multi_bridge_addrs=()  # "address (count)" for any address with >1 br
 # the exit address (expected to hold the smart-contract-locked funds), so the absence of
 # bridge exits is reported as a warning.
 claim_for_address() {
-	local addr="$1" warn_if_empty="${2:-0}" dc n
+	local addr="$1" warn_if_empty="${2:-0}" dc method entry n
 	echo "=== ${addr} ==="
 	mapfile -t deposits < <(fetch_deposit_counts "$addr" || true)
 	n="${#deposits[@]}"
@@ -271,12 +280,19 @@ claim_for_address() {
 		echo
 		return 0
 	fi
-	echo "  ${n} bridge exit(s): ${deposits[*]}"
-	for dc in "${deposits[@]}"; do
-		echo "  --- deposit_count=${dc} ---"
+	echo "  ${n} bridge exit(s): ${deposits[*]%% *}"
+	for entry in "${deposits[@]}"; do
+		dc="${entry%% *}"
+		method="${entry#* }"
+		echo "  --- deposit_count=${dc} (${method}) ---"
+		if [ -n "${handled_deposits[$dc]:-}" ]; then
+			echo "  already handled in this run through another address; skipping."
+			continue
+		fi
+		handled_deposits[$dc]=1
 		# Confirm each claim individually (unless DRY_RUN or ASSUME_YES).
 		if [ "$DRY_RUN" != "1" ] && [ "$ASSUME_YES" != "1" ]; then
-			read -r -p "  Submit claimAsset for ${addr} deposit_count=${dc}? [y/N] " reply
+			read -r -p "  Submit ${method} for ${addr} deposit_count=${dc}? [y/N] " reply
 			case "$reply" in
 				y | Y | yes | YES) ;;
 				*)

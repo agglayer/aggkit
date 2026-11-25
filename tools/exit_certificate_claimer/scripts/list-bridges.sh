@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# list-bridges.sh — list the bridge exits (deposits) associated with a destination
-# address by querying the exit_certificate_claimer service.
+# list-bridges.sh — list the bridge exits (deposits) associated with an address by querying the
+# exit_certificate_claimer service (API v2): the Transfer and Message exits destined to it, and the
+# Message exits it is the beneficiary of (decoded through a message route configured in the claimer).
 #
 # Usage:
-#   ./list-bridges.sh <dest_address>
+#   ./list-bridges.sh <address>
 #
 # Environment:
 #   CLAIMER_URL   Base URL of the claimer service (default: http://localhost:8080)
@@ -16,10 +17,10 @@
 set -euo pipefail
 
 CLAIMER_URL="${CLAIMER_URL:-http://localhost:8080}"
-API_BASE="${CLAIMER_URL%/}/claimer/v1"
+API_BASE="${CLAIMER_URL%/}/claimer/v2"
 
 usage() {
-	echo "Usage: $0 <dest_address>" >&2
+	echo "Usage: $0 <address>" >&2
 	echo "  CLAIMER_URL (env) defaults to http://localhost:8080" >&2
 	exit 2
 }
@@ -42,7 +43,7 @@ fi
 # Fetch /bridges, capturing body and HTTP status separately.
 response="$(curl -sS -w $'\n%{http_code}' \
 	--get "${API_BASE}/bridges" \
-	--data-urlencode "dest_address=${DEST_ADDRESS}")"
+	--data-urlencode "address=${DEST_ADDRESS}")"
 http_code="${response##*$'\n'}"
 body="${response%$'\n'*}"
 
@@ -56,7 +57,7 @@ count="$(echo "$body" | jq '.bridges | length')"
 network_id="$(echo "$body" | jq -r '.network_id')"
 
 echo "Network ID:          ${network_id}"
-echo "Destination address: ${DEST_ADDRESS}"
+echo "Address:             ${DEST_ADDRESS}"
 echo "Bridge exits found:  ${count}"
 echo
 
@@ -67,13 +68,16 @@ fi
 
 # Tabular summary; use --claim-params <deposit_count> against claim-asset.sh to claim.
 echo "$body" | jq -r '
-	["DEPOSIT_COUNT","LEAF_TYPE","ORIGIN_NET","TOKEN","AMOUNT"],
+	["DEPOSIT_COUNT","CLAIM_METHOD","ORIGIN_NET","ORIGIN_ADDRESS","AMOUNT","BENEFICIARY","DECODED_AMOUNT","TOKEN"],
 	(.bridges[] | [
 		(.deposit_count|tostring),
-		(.leaf_type|tostring),
+		.claim_method,
 		(.origin_network|tostring),
 		.origin_token_address,
-		.amount
+		.amount,
+		(.beneficiary // "-"),
+		(.decoded_amount // "-"),
+		(.display_token.symbol // "-")
 	]) | @tsv' | column -t -s $'\t'
 
 echo
