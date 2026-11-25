@@ -21,6 +21,9 @@
 #     resolving because the copy lives next to the original, mounted at /data.
 #
 # The service (background process or compose stack) is always stopped on exit.
+#
+# With CLAIMER_ALREADY_RUNNING=1 the script neither starts nor stops a claimer: it claims through the one
+# already serving at CLAIMER_HOST:CLAIMER_PORT (the follow-mode claimer of 61-claimer_follow.sh).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,6 +50,8 @@ CLAIMER_URL="http://${CLAIMER_HOST}:${CLAIMER_PORT}"
 # How long to wait for the claimer to finish its initial L1 sync and bind.
 CLAIMER_READY_TIMEOUT="${CLAIMER_READY_TIMEOUT:-300}"
 
+CLAIMER_ALREADY_RUNNING="${CLAIMER_ALREADY_RUNNING:-0}"
+
 CLAIMER_PID=""
 CLAIMER_LOG="$(mktemp -t exit_certificate_claimer.XXXXXX.log)"
 DOCKER_CONFIG_COPY=""
@@ -66,7 +71,9 @@ compose() {
 }
 
 claimer_alive() {
-    if [[ "$CLAIMER_MODE" == "docker" ]]; then
+    if [[ "$CLAIMER_ALREADY_RUNNING" == "1" ]]; then
+        return 0
+    elif [[ "$CLAIMER_MODE" == "docker" ]]; then
         [[ -n "$(compose ps --status running --quiet 2>/dev/null)" ]]
     else
         kill -0 "$CLAIMER_PID" 2>/dev/null
@@ -82,7 +89,9 @@ claimer_logs() {
 }
 
 cleanup() {
-    if [[ "$CLAIMER_MODE" == "docker" ]]; then
+    if [[ "$CLAIMER_ALREADY_RUNNING" == "1" ]]; then
+        :
+    elif [[ "$CLAIMER_MODE" == "docker" ]]; then
         if [[ -n "$DOCKER_CONFIG_COPY" ]]; then
             log_info "🛑 Stopping exit_certificate_claimer compose stack"
             compose down --remove-orphans >/dev/null 2>&1 || true
@@ -108,7 +117,9 @@ if [[ ! -f "$EXIT_CERT_CONFIG" ]]; then
     exit 1
 fi
 
-if [[ "$CLAIMER_MODE" == "docker" ]]; then
+if [[ "$CLAIMER_ALREADY_RUNNING" == "1" ]]; then
+    log_info "♻️  Use the claimer already running on ${CLAIMER_URL}"
+elif [[ "$CLAIMER_MODE" == "docker" ]]; then
     # The container reaches host-published services through host.docker.internal
     # (wired to host-gateway by the compose file), not 127.0.0.1. Rewrite the RPC
     # URLs in a sibling copy of the config so relative paths still resolve at /data.

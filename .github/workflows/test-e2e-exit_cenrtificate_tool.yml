@@ -3,8 +3,9 @@
 # test harness / this workflow itself). The test spins up a Kurtosis CDK
 # network, prepares a settled certificate and runs the exit_certificate tool.
 # Two jobs: the regular exit certificate, and the delta mode (a first certificate that leaves
-# smart-contract-locked funds behind, then two delta certificates recovering them on top of it, each
-# recovery being a zkevm-proof-of-ownership-kit submission built and verified by the kit).
+# smart-contract-locked funds behind, then two delta certificates recovering them on top of it and a third
+# one recovering Circle USDC.e with bridge Message exits, each recovery being a
+# zkevm-proof-of-ownership-kit submission built and verified by the kit).
 name: Test E2E exit-certificate tool
 
 on:
@@ -106,8 +107,9 @@ jobs:
           "${install_dir}/kurtosis" analytics disable
           "${install_dir}/kurtosis" version
 
-      # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh),
-      # pinned to a commit of the kit's main (bump it deliberately when the kit changes).
+      # The delta recoveries are real zkevm-proof-of-ownership-kit submissions (prepare/verify-submission.sh).
+      # Deltas 1 and 2 use the legacy recovery.json format: the kit is pinned to a commit of its main
+      # (bump it deliberately when the kit changes).
       - name: Checkout zkevm-proof-of-ownership-kit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -116,10 +118,21 @@ jobs:
           path: zkevm-proof-of-ownership-kit
           persist-credentials: false
 
+      # Delta 3 (Circle USDC, Message exits) needs the kit that writes recovery.json version 1: the
+      # multiple-outputs format, pinned to its commit (bump it deliberately when the kit changes).
+      - name: Checkout zkevm-proof-of-ownership-kit (recovery.json version 1)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: agglayer/zkevm-proof-of-ownership-kit
+          ref: e0945489831dd78559efbf95bf6546684610df84
+          path: zkevm-proof-of-ownership-kit-v1
+          persist-credentials: false
+
       - name: Run exit-certificate delta E2E test
         env:
           VERBOSE: "1"
           KIT_DIR: ${{ github.workspace }}/zkevm-proof-of-ownership-kit
+          KIT_V1_DIR: ${{ github.workspace }}/zkevm-proof-of-ownership-kit-v1
           # Exercise the claimer through its docker-compose deployment (the same
           # artifact users deploy) instead of a host binary.
           CLAIMER_MODE: docker

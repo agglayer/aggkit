@@ -191,6 +191,11 @@ DELTA_OWNER_ADDRESS_2="$DELTA_OWNER_ADDRESS_2"
 DELTA_OWNER_KEY_2="$DELTA_DEST_KEY_2"
 EOF
     log_info "Delta scenario state saved to: $DELTA_STATE_FILE"
+
+    # Circle's USDC.e (a token native to the L2, moved with bridge messages) and its holders: what delta 3
+    # recovers with Message exits.
+    log_info "🏦 Circle USDC scenario: USDC + L1Escrow on L1, USDC.e + ZkMinterBurner + NativeConverter + Safe on L2"
+    PRIVATE_KEY="$PRIVATE_KEY" "${SCRIPT_DIR}/21-prepare_circle_usdc.sh"
 fi
 
 log_info "🔗 Run L2 -> L1 bridge to produce a certificate"
