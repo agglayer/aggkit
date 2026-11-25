@@ -598,10 +598,23 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
 }
 ```
 
-- Only `Transfer` exits are supported, with a positive `amount`, a `token_info`, and a `dest_network` other than the exiting network.
+- `Transfer` and `Message` exits are supported, with a `token_info` and a `dest_network` other than the exiting network. A `Transfer` (`bridgeAsset`) needs a positive `amount`. A `Message` (`bridgeMessage`; `--step recoveries` produces them from version-1 recoveries) has stricter rules: `amount` must be `"0"` (messages carrying value are not supported), `metadata` is mandatory and non-empty (it is the message), and `token_info` is not a token but the **sender**: `origin_network` must be the exiting network and `origin_token_address` a non-zero address. Example:
+
+  ```json
+  {
+    "leaf_type": "Message",
+    "token_info": { "origin_network": 1, "origin_token_address": "0xBDa0B27f93B2FD3f076725b89cf02e48609bC189" },
+    "dest_network": 0,
+    "dest_address": "0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB",
+    "amount": "0",
+    "metadata": "00000000000000000000000000000000b0e79c68cafc54802726c6f102cca30000000000000000000000000000000000000000000000000000000000000f4240"
+  }
+  ```
+
+  A `Message` moves no token balance, so Step F leaves it out of the per-token check (a delta of `Message` exits only has nothing to compare). It is claimed on the destination network with `claimMessage`, not `claimAsset`.
 - An exit identical to **any leaf already in the exit tree** (exits of previous runs and older L2 bridges, read from the copied lite DB) or to another delta exit — same token, destination, amount and metadata — is rejected: both would be distinct leaves with the same hash and the claimer indexes leaves by hash, so it could not tell them apart. Merge repeated delta exits into one (sum the amounts); against an already settled leaf, change the amount.
-- `metadata`, when present, is the **raw** leaf metadata as plain hex (the tool hashes it): no `0x` prefix and even length — a malformed value is rejected instead of being silently dropped (which would regenerate it from the L2 and change the leaf). A certificate's `metadata` is the keccak hash: do not copy it here (a 32-byte value logs a warning). When absent the tool derives it from the L2 bridge the way `bridgeAsset` does: the ABI-encoded name/symbol/decimals of the L2 token for ERC-20 exits, the gas-token metadata for native exits.
-- **The L2 RPC (`l2RpcUrl`) must still answer in delta mode**: it is used for the L2 bridge's gas token and for that metadata derivation (every exit produced by `--step recoveries` carries none). Balances are never read from it.
+- `metadata`, when present, is the **raw** leaf metadata as plain hex (the tool hashes it): no `0x` prefix and even length — a malformed value is rejected instead of being silently dropped (which would regenerate it from the L2 and change the leaf). A certificate's `metadata` is the keccak hash: do not copy it here (a 32-byte value logs a warning). When absent the tool derives it from the L2 bridge the way `bridgeAsset` does: the ABI-encoded name/symbol/decimals of the L2 token for ERC-20 exits, the gas-token metadata for native exits. A `Message`'s metadata is the message itself: it is used as given, never derived, and an exit without it is rejected.
+- **The L2 RPC (`l2RpcUrl`) must still answer in delta mode**: it is used for the L2 bridge's gas token and for that metadata derivation (the exits produced by `--step recoveries` from legacy-format cases carry none; version-1 cases carry the metadata of their `BridgeEvent`s). Balances are never read from it.
 
 ### Pipeline
 
@@ -779,22 +792,62 @@ reality and the agglayer offers no per-contract view).
 
 Config (besides `deltaMode`, `previousRun`, `outputDir`): `options.recoveriesPath`.
 
-Each `recovery.json` (`locked_contract`, `destination`, `funds[]` with `token` = `native` or the L2 token address,
-and `amount` in base units) becomes one Transfer exit to L1 per (destination, origin token); the L2 token is
-resolved to its origin through `step-0-lbt.json`. Checks, all or nothing (on any error nothing is written):
+Two `recovery.json` formats are accepted, and can be mixed in the same run:
 
-- same validation as the kit's `validate-recovery.sh` (no unknown fields, no placeholder addresses, positive
-  amounts, no repeated token);
+- **Legacy** (no `version` field): `locked_contract`, `destination`, `funds[]` with `token` = `native` or the L2
+  token address, and `amount` in base units. The L2 token is resolved to its origin through `step-0-lbt.json`.
+- **Version 1** (`"version": 1`): the bridge exits themselves — one `outputs[]` entry per `BridgeEvent` that the
+  case's `move.sh` emitted on the kit's shadow-fork (built by the kit's `build-recovery.sh`):
+
+  ```json
+  {
+    "version": 1,
+    "outputs": [
+      {
+        "leaf_type": "Transfer",
+        "token_info": { "origin_network": 0, "origin_token_address": "0x0000000000000000000000000000000000000000" },
+        "destination_network": 0,
+        "destination_address": "0x4512b32d20424960b4c7f11cecb02063e31d85ad",
+        "amount": "14204531250000",
+        "metadata": "0x"
+      }
+    ]
+  }
+  ```
+
+  The field names and rules are the kit's (`recovery-tx/validate-recovery.sh`): `destination_network` /
+  `destination_address` (not the `dest_*` names of a certificate), a labelled `leaf_type`, `amount` as a base-10
+  string, `metadata` as `0x` hex, every field required and no other field. `leaf_type` is `Transfer` (bridgeAsset:
+  `token_info` is the token, ETH is `0`/`0x0…0`; it must go to network 0, with a positive amount, and bridge ETH or
+  a token in the LBT — not one native to the L2) or `Message` (bridgeMessage: `token_info` is the sender — the L2
+  network and a non-zero address —, `amount` must be `"0"`, `metadata` is the message and cannot be empty, and the
+  destination network cannot be the L2). A `Message` carrying ETH is refused.
+
+The exits of legacy cases come first: one Transfer exit to L1 per (destination, origin token), summing the cases
+that coincide, sorted (as before version 1 existed). The outputs of version-1 cases follow **one exit per output,
+field by field and in the same order** (the order of the kit's `BridgeEvent`s; cases in path order): they are never
+merged, sorted or re-derived, and each keeps its `metadata`. Two identical outputs therefore stay two identical
+exits, which the delta run rejects (see [Delta exits file](#delta-exits-file)). Checks, all or nothing (on any
+error nothing is written):
+
+- same validation as the kit's `validate-recovery.sh` of each format (no unknown fields, every field present; legacy:
+  no placeholder addresses, positive amounts, no repeated token; version 1: labelled `leaf_type`, `0x` hex metadata,
+  amounts as strings, plus no placeholder `destination_address`, a positive amount for a Transfer and the Message
+  rules above); an unsupported `version` is an error;
 - **idempotence**: a case whose case hash (the kit's: sha256 of `recovery.json` and `move.sh`) is already in the
   ledger is skipped, not an error; a `(locked_contract, token, destination)` already recovered by a *different* case is an error
   — one recovery per contract+token+destination, ever (the ledger cannot tell a re-packaged copy of an applied case
   from a new one); a contract holding funds of several owners is recovered once per owner (another destination is
-  accepted), always bounded by the token's pending balance;
+  accepted), always bounded by the token's pending balance; a `recovery.json` already in the ledger under another
+  case hash (the same recovery re-packaged with another `move.sh`) is an error. Ledgers written before version 1
+  existed are read as they are: their cases keep their case hash and are still skipped;
 - **one case per archive, each case once per batch**: a `.tgz` with more than one `recovery.json`/`move.sh` is an
   error, and so is a directory holding the same `recovery.json` twice (e.g. a kit `.tgz` and its extracted files; a
   loose `recovery.json` without `move.sh` hashes only itself, so it would not look like the `.tgz`'s case);
 - per token, the sum of the new recoveries ≤ `pendingSCLockedBalance` still left (Step C), and ≤ the
-  `skippedSCLockedAmount` of Step F.
+  `skippedSCLockedAmount` of Step F. A Message carries no value and moves no balance of this state: what it
+  triggers on the destination network (e.g. a contract paying out in `onMessageReceived`) is **not** checked here,
+  and no balance bounds how many Messages a case carries — that is part of the manual review of the case.
 
 Input state: `<previousRun>/recoveries/` if a previous recoveries run left it there, else the files of
 `previousRun` when it is a first (non-delta) run. A previous delta run **without** `recoveries/` state is refused
@@ -805,9 +858,9 @@ Input state: `<previousRun>/recoveries/` if a previous recoveries run left it th
 | `step-c-sc-locked-values.json` | `pendingSCLockedBalance` −= recovered; `recoveredSCLockedBalance` += recovered. |
 | `step-f-checks.json` | recovered amount moves from `skippedSCLockedAmount` to `certificateAmount` / `lbtAmount` (Step F reports `lbtAmount` net of the skipped SC-locked value). |
 | `step-0-lbt.json` | unchanged copy, so the directory is a complete state for the next run. |
-| `recoveries-applied.json` | ledger of every applied (case, token). |
+| `recoveries-applied.json` | ledger of every applied (case, token) — legacy — or (case, output) — version 1, which adds `recoveryHash`, `version`, `leafType`, `destinationNetwork` and `metadata` and has no `lockedContract`. |
 | `delta-exits.json` | **only the exits of this run**: set it as `options.deltaExitsFile`. |
-| `recoveries-report.md` | per token: pending before / recovered / pending after. |
+| `recoveries-report.md` | Transfer / Message exit counts and, per token: pending before / recovered / pending after. |
 
 The state lives in a `recoveries/` subdirectory because the delta pipeline itself writes `step-f-checks.json` in
 `outputDir`. Run the step on every delta (with `previousRun` = the last settled run) so the chain keeps its state.
