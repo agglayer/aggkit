@@ -93,7 +93,7 @@ func upload(t *testing.T, store runarchive.ObjectStore, dir string) (*runarchive
 	t.Helper()
 	files, err := runarchive.CollectFiles(dir, nil)
 	require.NoError(t, err)
-	return runarchive.Upload(context.Background(), store, testLoc, dir, files, map[string]string{"mode": "full"},
+	return runarchive.Upload(context.Background(), store, testLoc, dir, files, 1, map[string]string{"mode": "full"},
 		t.TempDir())
 }
 
@@ -172,7 +172,7 @@ func TestUploadConflict(t *testing.T) {
 
 func TestUploadRejectsUnsafePath(t *testing.T) {
 	_, err := runarchive.Upload(context.Background(), mocks.NewObjectStore(t), testLoc, t.TempDir(),
-		[]string{"../escape"}, nil, t.TempDir())
+		[]string{"../escape"}, 1, nil, t.TempDir())
 	require.ErrorContains(t, err, "invalid file path")
 }
 
@@ -276,7 +276,7 @@ func TestDownloadRejectsTamperedManifest(t *testing.T) {
 		"path escape":         {manifest(v1, file("../x", "../x.zst")), "invalid file path"},
 		"absolute path":       {manifest(v1, file("/etc/x", "/etc/x.zst")), "invalid file path"},
 		"duplicated file":     {manifest(v1, file("a", "a.zst"), file("a", "a.zst")), "duplicated file"},
-		"unknown version":     {manifest(`"version":2,"compression":"zstd"`, file("a", "a.zst")), "unsupported version"},
+		"unknown version":     {manifest(`"version":2,"compression":"zstd"`, file("a", "a.zst")), "manifest version 2"},
 		"unknown compression": {manifest(`"version":1,"compression":"gzip"`, file("a", "a.zst")), "unsupported compression"},
 		"unknown field":       {manifest(v1+`,"extra":true`, file("a", "a.zst")), "unknown field"},
 		"object not derived":  {manifest(v1, file("a", "../b.zst")), "object of"},

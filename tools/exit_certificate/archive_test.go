@@ -134,7 +134,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 	deltaCfg := &Config{Options: Options{
 		DeltaMode: true, PreviousRun: testRunURI, OutputDir: t.TempDir(), ArchiveCacheDir: cache,
 	}}
-	require.NoError(t, resolvePreviousRun(context.Background(), deltaCfg, open))
+	require.NoError(t, resolvePreviousRun(context.Background(), deltaCfg, open, nil))
 	require.Equal(t, runarchive.CacheDir(cache, loc), deltaCfg.Options.PreviousRun)
 	require.Equal(t, loc.String(), deltaCfg.Options.PreviousRunArchive)
 	require.NotEmpty(t, deltaCfg.Options.PreviousRunArchiveManifestSHA256)
@@ -148,7 +148,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 
 	// A local previousRun is left untouched (nothing to download).
 	localCfg := &Config{Options: Options{PreviousRun: dir}}
-	require.NoError(t, resolvePreviousRun(context.Background(), localCfg, open))
+	require.NoError(t, resolvePreviousRun(context.Background(), localCfg, open, nil))
 	require.Equal(t, dir, localCfg.Options.PreviousRun)
 }
 

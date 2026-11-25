@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -19,6 +21,9 @@ const (
 	ManifestFile = "archive-manifest.json"
 	// ManifestVersion is the version of the manifest format.
 	ManifestVersion = 1
+	// DataVersionLegacy is the data version of a manifest that does not record one: the format of the
+	// first archived runs, written before the field existed.
+	DataVersionLegacy = 1
 	// CompressionZstd is the only compression supported: every file is stored as <path>.zst.
 	CompressionZstd = "zstd"
 	// objectSuffix is appended to a file's path to name its compressed object.
@@ -28,6 +33,41 @@ const (
 )
 
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+
+// ErrUnsupportedVersion is returned when an archived run has a manifest version this code does not know
+// (parsing it, so by ReadManifest, Download and Upload) or a data version outside the range its reader
+// supports (CheckDataVersion). The run is not corrupted: it was written by a newer tool, and reading it
+// needs a newer reader.
+var ErrUnsupportedVersion = errors.New("unsupported archive version")
+
+// VersionRange is the inclusive range of data versions a reader of archived runs supports.
+type VersionRange struct {
+	Min int
+	Max int
+}
+
+// Supports reports whether v is inside the range.
+func (r VersionRange) Supports(v int) bool {
+	return v >= r.Min && v <= r.Max
+}
+
+// String formats the range for error messages.
+func (r VersionRange) String() string {
+	if r.Min == r.Max {
+		return strconv.Itoa(r.Min)
+	}
+	return fmt.Sprintf("%d to %d", r.Min, r.Max)
+}
+
+// CheckDataVersion returns an ErrUnsupportedVersion error when the data version of the archived run is
+// outside the range the caller supports.
+func CheckDataVersion(m *Manifest, supported VersionRange) error {
+	if !supported.Supports(m.DataVersion) {
+		return fmt.Errorf("the archived run has data version %d, this tool supports %s (use a newer version "+
+			"of the tool): %w", m.DataVersion, supported, ErrUnsupportedVersion)
+	}
+	return nil
+}
 
 // FileEntry describes one archived file: the original file (Path, Size, SHA256) and the compressed object
 // it is stored as (Object, ObjectSize, ObjectCRC32C).
@@ -51,7 +91,14 @@ func (e FileEntry) sameSource(other FileEntry) bool {
 
 // Manifest lists the files of an archived run. It is uploaded last: a prefix without it is incomplete.
 type Manifest struct {
-	Version     int    `json:"version"`
+	// Version is the version of the manifest format itself (ManifestVersion).
+	Version int `json:"version"`
+	// DataVersion is the version of the format of the archived files, as their readers see it: the
+	// certificate JSON, the lite syncer DB schema, step-wait-result.json, step-pending-l2-bridges.json and
+	// the recoveries/ state. The tool that uploads the run sets it and bumps it whenever a change would
+	// break an older reader; each reader checks it against the range it supports (CheckDataVersion). A
+	// manifest without it is read as DataVersionLegacy.
+	DataVersion int    `json:"dataVersion,omitempty"`
 	Compression string `json:"compression"`
 	// Info is free-form metadata about the run (tool version, mode, height, certificate hash...). It is
 	// not compared when deciding whether a prefix already holds the same run.
@@ -91,8 +138,20 @@ func (m *Manifest) encode() ([]byte, error) {
 }
 
 // parseManifest decodes and validates a manifest: known version and compression, safe and unique relative
-// paths, and object names derived from them.
+// paths, and object names derived from them. A manifest of another version is an ErrUnsupportedVersion
+// (whatever else it holds: a newer format may add fields), and a missing data version is read as
+// DataVersionLegacy.
 func parseManifest(data []byte) (*Manifest, error) {
+	var head struct {
+		Version *int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", ManifestFile, err)
+	}
+	if head.Version != nil && *head.Version != ManifestVersion {
+		return nil, fmt.Errorf("%s: manifest version %d, this tool supports %d (use a newer version of the "+
+			"tool): %w", ManifestFile, *head.Version, ManifestVersion, ErrUnsupportedVersion)
+	}
 	var m Manifest
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -100,7 +159,13 @@ func parseManifest(data []byte) (*Manifest, error) {
 		return nil, fmt.Errorf("parse %s: %w", ManifestFile, err)
 	}
 	if m.Version != ManifestVersion {
-		return nil, fmt.Errorf("%s: unsupported version %d (want %d)", ManifestFile, m.Version, ManifestVersion)
+		return nil, fmt.Errorf("%s: missing version (want %d)", ManifestFile, ManifestVersion)
+	}
+	if m.DataVersion < 0 {
+		return nil, fmt.Errorf("%s: invalid dataVersion %d", ManifestFile, m.DataVersion)
+	}
+	if m.DataVersion == 0 {
+		m.DataVersion = DataVersionLegacy
 	}
 	if m.Compression != CompressionZstd {
 		return nil, fmt.Errorf("%s: unsupported compression %q (want %q)", ManifestFile, m.Compression, CompressionZstd)

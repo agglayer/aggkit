@@ -32,6 +32,17 @@ func (o *Objects) Get(name string) ([]byte, bool) {
 	return d, ok
 }
 
+// Delete removes an object, as a test needs to simulate an incomplete or damaged run (the real store is
+// write-once), and returns its content.
+func (o *Objects) Delete(name string) []byte {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	d := o.Data[name]
+	delete(o.Data, name)
+	delete(o.Metadata, name)
+	return d
+}
+
 // NewStore returns an ObjectStore mock whose calls read and write objs, with the write-once semantics of
 // the real store (Create never overwrites) and its CRC32C check on upload.
 func NewStore(t *testing.T, objs *Objects) *mocks.ObjectStore {

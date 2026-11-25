@@ -108,12 +108,19 @@ type UploadResult struct {
 // original SHA-256 (so a retry after a partial upload resumes), otherwise Upload fails with
 // ErrObjectConflict. If loc already holds a complete run, Upload succeeds without uploading when it lists
 // the same files and fails with ErrRunExists otherwise.
+//
+// dataVersion is the version of the format of the files, recorded in the manifest (Manifest.DataVersion):
+// the tool that produced them declares it.
 func Upload(
-	ctx context.Context, store ObjectStore, loc Location, dir string, files []string, info map[string]string,
-	tmpDir string,
+	ctx context.Context, store ObjectStore, loc Location, dir string, files []string, dataVersion int,
+	info map[string]string, tmpDir string,
 ) (*UploadResult, error) {
+	if dataVersion < 1 {
+		return nil, fmt.Errorf("invalid data version %d: it starts at 1", dataVersion)
+	}
 	manifest := &Manifest{
-		Version: ManifestVersion, Compression: CompressionZstd, Info: info, Files: make([]FileEntry, 0, len(files)),
+		Version: ManifestVersion, DataVersion: dataVersion, Compression: CompressionZstd, Info: info,
+		Files: make([]FileEntry, 0, len(files)),
 	}
 	for _, rel := range files {
 		if err := validateRelPath(rel); err != nil {

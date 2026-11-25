@@ -68,7 +68,8 @@ outputDir = "./output"
 
 # OPTIONAL — archive base for --step upload: the run goes to <archiveURI>/<networkID>/<height> (from the
 # certificate), each file compressed with zstd. Default: "" (only the upload step needs it). With deltaMode,
-# previousRun can be the URI of an archived run, e.g. gs://<bucket>/runs/1/0000000004.
+# previousRun can be this same base (the run of the last settled certificate is used, its height asked to the
+# agglayer) or the URI of one archived run, e.g. gs://<bucket>/runs/1/0000000004.
 #archiveURI = "gs://polygonlabs-zkevm-bali-let-archive/runs"
 
 # OPTIONAL — where archived runs are downloaded (gs:// previousRun, claimer --run-source).

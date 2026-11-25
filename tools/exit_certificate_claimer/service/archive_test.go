@@ -60,7 +60,7 @@ func archiveRun(t *testing.T, files map[string]string) *archivetest.Objects {
 	loc, err := runarchive.ParseURI(testRunSource)
 	require.NoError(t, err)
 	objs := &archivetest.Objects{}
-	_, err = runarchive.Upload(context.Background(), archivetest.NewStore(t, objs), loc, dir, rels, nil, t.TempDir())
+	_, err = runarchive.Upload(context.Background(), archivetest.NewStore(t, objs), loc, dir, rels, 1, nil, t.TempDir())
 	require.NoError(t, err)
 	return objs
 }

@@ -60,6 +60,22 @@ type DownloadResult struct {
 	Reused     int
 }
 
+// ReadManifest reads and validates the manifest of the run archived at loc, with a single request and
+// without downloading anything else. It returns ErrIncompleteRun when loc has no manifest (nothing was
+// archived there, or the upload did not complete) and ErrUnsupportedVersion when the manifest has a version
+// this code does not know. The data version is the caller's to check (CheckDataVersion).
+func ReadManifest(ctx context.Context, store ObjectStore, loc Location) (*Manifest, error) {
+	manifest, _, err := readManifest(ctx, store, loc)
+	if errors.Is(err, ErrObjectNotExist) {
+		return nil, fmt.Errorf("%s has no %s (nothing archived there, or the upload did not complete): %w",
+			loc, ManifestFile, ErrIncompleteRun)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", loc, err)
+	}
+	return manifest, nil
+}
+
 // Download fetches the files of the run archived at loc that sel picks into dir, verifying each one's size,
 // SHA-256 and CRC32C against the manifest. A file already in dir with the right content is not fetched
 // again; one with other content is replaced. dir is meant to hold this run only (see CacheDir): a copy of
@@ -74,11 +90,13 @@ func Download(ctx context.Context, store ObjectStore, loc Location, dir string, 
 	if err != nil {
 		return nil, err
 	}
-	if err := prepareDir(dir, manifest, raw); err != nil {
-		return nil, err
-	}
+	// Select before touching dir: a run the caller rejects (e.g. an unsupported data version) leaves nothing
+	// behind.
 	files, err := selectFiles(manifest, sel)
 	if err != nil {
+		return nil, err
+	}
+	if err := prepareDir(dir, manifest, raw); err != nil {
 		return nil, err
 	}
 

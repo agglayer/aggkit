@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -43,6 +44,46 @@ const heightDigits = 10
 // cannot hold two different runs for the same height.
 func (l Location) Run(networkID uint32, height uint64) Location {
 	return Location{Bucket: l.Bucket, Prefix: fmt.Sprintf("%s/%d/%0*d", l.Prefix, networkID, heightDigits, height)}
+}
+
+// RunParts splits the location of a run into its archive base, network ID and certificate height. ok is
+// false when l is not a run location, that is, when its prefix does not end with
+// /<networkID>/<height as exactly 10 digits> after a non-empty base prefix: such a location is an archive
+// base (the prefix runs are stored under). It is the inverse of Run.
+func (l Location) RunParts() (base Location, networkID uint32, height uint64, ok bool) {
+	segs := strings.Split(l.Prefix, "/")
+	const minSegments = 3 // <base>/<networkID>/<height>
+	if len(segs) < minSegments {
+		return Location{}, 0, 0, false
+	}
+	netSeg, heightSeg := segs[len(segs)-2], segs[len(segs)-1]
+	if len(heightSeg) != heightDigits || !isDecimal(heightSeg) || !isDecimal(netSeg) ||
+		(len(netSeg) > 1 && netSeg[0] == '0') {
+		return Location{}, 0, 0, false
+	}
+	net, err := strconv.ParseUint(netSeg, 10, 32)
+	if err != nil {
+		return Location{}, 0, 0, false
+	}
+	h, err := strconv.ParseUint(heightSeg, 10, 64)
+	if err != nil {
+		return Location{}, 0, 0, false
+	}
+	base = Location{Bucket: l.Bucket, Prefix: strings.Join(segs[:len(segs)-2], "/")}
+	return base, uint32(net), h, true
+}
+
+// isDecimal reports whether s is a non-empty string of ASCII digits.
+func isDecimal(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // IsURI reports whether s is an archive URI (gs://...) rather than a local path.
