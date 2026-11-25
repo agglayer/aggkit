@@ -84,6 +84,7 @@
       "leaf_type": 0,
       "deposit_count": 3,
       "l1_info_tree_index": 123456,
+      "metadata_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
       "claim_method": "claimAsset"
     },
     {
@@ -167,6 +168,7 @@
       "leaf_type": 1,
       "deposit_count": 4,
       "l1_info_tree_index": 123456,
+      "metadata_hash": "0x4c05a509c33764f91bc2b0513a4325bc332d2154f8505d250742d4adf2b21d46",
       "claim_method": "claimMessage"
     },
     {
@@ -250,6 +252,7 @@
       "leaf_type": 1,
       "deposit_count": 1,
       "l1_info_tree_index": 123456,
+      "metadata_hash": "0x4c86a7b1afeef5b6904cf0266e98391c53ca0468ffb6358e53abd218b58c29cc",
       "claim_method": "claimMessage"
     },
     {
@@ -333,6 +336,7 @@
       "leaf_type": 0,
       "deposit_count": 2,
       "l1_info_tree_index": 123456,
+      "metadata_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
       "claim_method": "claimAsset"
     }
   ]

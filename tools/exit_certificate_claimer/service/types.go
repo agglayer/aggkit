@@ -6,6 +6,7 @@ import (
 
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // leaf_type values as serialized in the signed exit certificate.
@@ -66,11 +67,15 @@ func claimMethod(leafType uint8) string {
 	return ClaimMethodAsset
 }
 
-// BridgeExitViewV2 is a bridge exit as returned by API v2: the v1 fields plus the claim method and,
-// for a Message exit decoded through a configured message route, its beneficiary, the amount it is
-// paid and the token it is paid in.
+// BridgeExitViewV2 is a bridge exit as returned by API v2: the v1 fields plus the metadata hash, the
+// claim method and, for a Message exit decoded through a configured message route, its beneficiary,
+// the amount it is paid and the token it is paid in.
+//
+// Unlike in v1, Metadata is always the raw bridge metadata (for certificate exits and pending bridges
+// alike) and MetadataHash is always its keccak256 hash.
 type BridgeExitViewV2 struct {
 	BridgeExitView
+	MetadataHash  string        `json:"metadata_hash"`
 	ClaimMethod   string        `json:"claim_method"`
 	Beneficiary   string        `json:"beneficiary,omitempty"`
 	DecodedAmount string        `json:"decoded_amount,omitempty"`
@@ -78,10 +83,12 @@ type BridgeExitViewV2 struct {
 }
 
 // ClaimParamsV2 holds the claim arguments of one exit as returned by API v2: the v1 fields (claimAsset
-// and claimMessage take the same 11 arguments, in the same order) plus the method to call.
+// and claimMessage take the same 11 arguments, in the same order) plus the keccak256 hash of the
+// metadata and the method to call.
 type ClaimParamsV2 struct {
 	ClaimAssetParams
-	ClaimMethod string `json:"claim_method"`
+	MetadataHash string `json:"metadata_hash"`
+	ClaimMethod  string `json:"claim_method"`
 }
 
 // BridgesResponseV2 is the body returned by GET /claimer/v2/bridges.
@@ -174,6 +181,12 @@ func bigToString(v *big.Int) string {
 // addrHex renders an address as a checksummed 0x string.
 func addrHex(a common.Address) string {
 	return a.Hex()
+}
+
+// metadataHashHex renders the keccak256 hash of a raw metadata blob as a 0x-prefixed hex string. It is
+// the metadata slot of the exit-tree leaf (and what a certificate carries as the exit's metadata).
+func metadataHashHex(rawMetadata []byte) string {
+	return crypto.Keccak256Hash(rawMetadata).Hex()
 }
 
 // metadataHex renders a metadata byte blob as a 0x-prefixed hex string ("0x" for empty).

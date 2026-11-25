@@ -304,6 +304,9 @@ Base path **`/claimer/v2`**. Same conventions as v1, plus:
   (v1: `destination_address`).
 - `Message` exits (`leaf_type` 1, created by `bridgeMessage`) are returned along with `Transfer` exits,
   and every entry says how to claim it (`claim_method`).
+- `metadata` is **always the raw bridge metadata**, in `/bridges` and in `/claim-params`, for certificate
+  exits and pending bridges alike, and every entry carries `metadata_hash`, its keccak256 hash. (In v1
+  `/bridges`, `metadata` is the hash for a certificate exit and the raw bytes for a pending bridge.)
 
 ### Which exits belong to an address
 
@@ -366,8 +369,9 @@ Same as v1, plus `api_version`.
       "destination_network": 0,
       "destination_address": "0xAbC0000000000000000000000000000000000001",
       "amount": "2000000000000000000",
-      "metadata": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "metadata": "0x",
       "deposit_count": 42,
+      "metadata_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
       "claim_method": "claimAsset"
     },
     {
@@ -377,8 +381,9 @@ Same as v1, plus `api_version`.
       "destination_network": 0,
       "destination_address": "0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB",
       "amount": "0",
-      "metadata": "0x4c05a509c33764f91bc2b0513a4325bc332d2154f8505d250742d4adf2b21d46",
+      "metadata": "0x000000000000000000000000abc0000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000004995e400",
       "deposit_count": 43,
+      "metadata_hash": "0x…",
       "claim_method": "claimMessage",
       "beneficiary": "0xAbC0000000000000000000000000000000000001",
       "decoded_amount": "1234560000",
@@ -402,7 +407,8 @@ Same as v1, plus `api_version`.
 | `bridges[].origin_network`, `bridges[].origin_token_address` | number, hex address | For an asset, the token's origin network and address. For a message, the network and address of the contract that sent it. |
 | `bridges[].destination_network`, `bridges[].destination_address` | number, hex address | Destination of the exit. For a message it is the contract that receives it, **not** the beneficiary. |
 | `bridges[].amount` | decimal string | The leaf's amount: the tokens transferred for an asset; the ETH value attached to a message (usually `"0"`). For what a decoded message pays, see `decoded_amount`. |
-| `bridges[].metadata` | hex string | As in v1: the keccak256 hash of the bridge metadata for a certificate exit, the raw bridge metadata for a pending one. |
+| `bridges[].metadata` | hex string | The **raw** bridge metadata of the leaf (`"0x"` when empty), for certificate exits and pending bridges alike. For an ERC-20 asset it is `abi.encode(name, symbol, decimals)`; for a message, its payload. Differs from v1, where a certificate exit shows the hash here. |
+| `bridges[].metadata_hash` | hex hash | keccak256 of `metadata`: the metadata slot of the exit-tree leaf, and what the certificate carries as the exit's metadata. Always present (the hash of the empty string for empty metadata). |
 | `bridges[].deposit_count` | number | Exit-tree leaf index of this exit. Unique per exit: use it to select the exit in `/claim-params`. |
 | `bridges[].claim_method` | string | `claimAsset` or `claimMessage`: the `AgglayerBridge` function that claims this exit. |
 | `bridges[].beneficiary` | hex address | Only for a decoded message: the address the destination contract pays. |
@@ -443,14 +449,23 @@ Same as v1, plus `api_version`.
       "leaf_type": 1,
       "deposit_count": 43,
       "l1_info_tree_index": 7,
+      "metadata_hash": "0x…",
       "claim_method": "claimMessage"
     }
   ]
 }
 ```
 
-Each entry has the same fields as in v1 plus `claim_method`. `claimAsset` and `claimMessage` take the
-**same 11 arguments in the same order** — the first 11 fields of the entry:
+Each entry has the same fields as in v1 plus `metadata_hash` and `claim_method`:
+
+| Field | Type | Claim arg? | Description |
+| ----- | ---- | ---------- | ----------- |
+| the 11 claim arguments, `leaf_type`, `deposit_count`, `l1_info_tree_index` | | | As in v1 `/claim-params`. `metadata` is the raw bridge metadata (as it already was in v1): pass it unchanged to the contract. |
+| `metadata_hash` | hex hash | no (context) | keccak256 of `metadata`; same value as in `/bridges` for the same exit. Not a contract argument. |
+| `claim_method` | string | no | `claimAsset` or `claimMessage`: the function to call. |
+
+`claimAsset` and `claimMessage` take the **same 11 arguments in the same order** — the first 11 fields
+of the entry:
 
 ```solidity
 function claimAsset  (bytes32[32] smtProofLocalExitRoot, bytes32[32] smtProofRollupExitRoot, uint256 globalIndex,
@@ -493,6 +508,9 @@ with an empty `bridges` / `claims` array.
 4. To show what a `Message` exit is worth, use `decoded_amount` + `display_token` when present; an
    undecoded message has no amount to show (its `amount` is the ETH value of the message).
 5. Do not assume `destination_address == address`: for a decoded message it is the paying contract.
+6. `bridges[].metadata` changes meaning for certificate exits: in v1 it is the keccak256 hash of the
+   metadata, in v2 the raw metadata. A client that used the v1 value as a hash must read
+   `metadata_hash` in v2. Pending bridges and `/claim-params` already carried the raw metadata in v1.
 
 ## Open Points / TODO
 

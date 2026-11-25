@@ -50,8 +50,8 @@ deposit count and global index.
 > output (`step-pending-l2-bridges.json`), `/bridges` and `/claim-params` also return them, after the
 > certificate's exits. Each is matched by the deposit count recorded in that file (not by leaf hash, which
 > is ambiguous for identical exits) and its proof is verified against `new_local_exit_root` before being
-> returned. In `/bridges` their `metadata` is the raw bridge metadata (the certificate's exits only carry
-> its hash). The claimer does not check whether they were claimed afterwards: the claim reverts with
+> returned. In API v1 `/bridges` their `metadata` is the raw bridge metadata, whereas a
+> certificate exit shows its hash there; API v2 always returns the raw metadata plus `metadata_hash`. The claimer does not check whether they were claimed afterwards: the claim reverts with
 > `AlreadyClaimed`, so re-run the PENDING_CLAIMS step to refresh the file.
 
 > **After a delta.** When the exit_certificate tool ran in [delta mode](../exit_certificate/README.md#delta-mode--chain-additional-exits-on-a-previous-certificate),

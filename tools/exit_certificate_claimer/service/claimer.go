@@ -119,8 +119,8 @@ type selectedExit struct {
 	destinationAddress common.Address
 	amount             *big.Int
 	depositCount       uint32
-	// viewMetadata is the metadata /bridges shows: the certificate's metadata hash for a certificate
-	// exit, the raw bridge metadata for a pending one.
+	// viewMetadata is the metadata /bridges shows in API v1: the certificate's metadata hash for a
+	// certificate exit, the raw bridge metadata for a pending one. API v2 always shows rawMetadata.
 	viewMetadata []byte
 	// rawMetadata is the raw bridge metadata, the one a claim needs.
 	rawMetadata []byte
@@ -269,9 +269,15 @@ func (e *selectedExit) view() BridgeExitView {
 	}
 }
 
-// viewV2 renders the exit for /bridges (API v2 form).
+// viewV2 renders the exit for /bridges (API v2 form): metadata is always the raw bridge metadata, with
+// its hash next to it.
 func (e *selectedExit) viewV2() BridgeExitViewV2 {
-	v := BridgeExitViewV2{BridgeExitView: e.view(), ClaimMethod: claimMethod(e.leafType)}
+	v := BridgeExitViewV2{
+		BridgeExitView: e.view(),
+		MetadataHash:   metadataHashHex(e.rawMetadata),
+		ClaimMethod:    claimMethod(e.leafType),
+	}
+	v.Metadata = metadataHex(e.rawMetadata)
 	if e.decoded != nil {
 		token := e.decoded.token
 		v.Beneficiary = addrHex(e.decoded.beneficiary)
@@ -393,7 +399,8 @@ func (c *Claimer) buildClaims(ctx context.Context, sel exitSelection) ([]ClaimPa
 				LeafType:           e.leafType,
 				DepositCount:       e.depositCount,
 			}, leaf, localProof, rollupProof),
-			ClaimMethod: claimMethod(e.leafType),
+			MetadataHash: metadataHashHex(e.rawMetadata),
+			ClaimMethod:  claimMethod(e.leafType),
 		})
 	}
 	return claims, nil

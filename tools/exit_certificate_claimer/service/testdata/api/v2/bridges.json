@@ -10,8 +10,9 @@
       "destination_network": 0,
       "destination_address": "0xa11ce00000000000000000000000000000000001",
       "amount": "2000000000000000000",
-      "metadata": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+      "metadata": "0x",
       "deposit_count": 3,
+      "metadata_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
       "claim_method": "claimAsset"
     },
     {
@@ -21,8 +22,9 @@
       "destination_network": 0,
       "destination_address": "0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB",
       "amount": "0",
-      "metadata": "0x4c05a509c33764f91bc2b0513a4325bc332d2154f8505d250742d4adf2b21d46",
+      "metadata": "0x000000000000000000000000a11ce00000000000000000000000000000000001000000000000000000000000000000000000000000000000000000004995e400",
       "deposit_count": 4,
+      "metadata_hash": "0x4c05a509c33764f91bc2b0513a4325bc332d2154f8505d250742d4adf2b21d46",
       "claim_method": "claimMessage",
       "beneficiary": "0xa11ce00000000000000000000000000000000001",
       "decoded_amount": "1234560000",
@@ -41,6 +43,7 @@
       "amount": "0",
       "metadata": "0x000000000000000000000000a11ce00000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000eee53a0",
       "deposit_count": 1,
+      "metadata_hash": "0x4c86a7b1afeef5b6904cf0266e98391c53ca0468ffb6358e53abd218b58c29cc",
       "claim_method": "claimMessage",
       "beneficiary": "0xa11ce00000000000000000000000000000000001",
       "decoded_amount": "250500000",
@@ -59,6 +62,7 @@
       "amount": "100000000000000000",
       "metadata": "0x",
       "deposit_count": 2,
+      "metadata_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
       "claim_method": "claimAsset"
     }
   ]

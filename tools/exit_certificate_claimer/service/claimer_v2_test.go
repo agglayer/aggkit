@@ -8,6 +8,7 @@ import (
 	exitcertificate "github.com/agglayer/aggkit/tools/exit_certificate"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -271,4 +272,56 @@ func TestWithMessageRoutesInvalid(t *testing.T) {
 	bad.MetadataLayout = "bytes"
 	_, err := f.claimer.WithMessageRoutes([]MessageRoute{bad})
 	require.ErrorContains(t, err, "unsupported metadataLayout")
+}
+
+// In API v2 metadata is always the raw bridge metadata and metadata_hash its keccak256, for
+// certificate exits and pending bridges alike, in /bridges and in /claim-params. API v1 keeps showing
+// the certificate's metadata hash as the metadata of a certificate exit in /bridges.
+func TestV2MetadataIsRawWithHash(t *testing.T) {
+	t.Parallel()
+	f := newCircleFixture(t)
+	ctx := context.Background()
+
+	bridges, err := f.claimer.ListBridgesV2(f.holder)
+	require.NoError(t, err)
+	claims, err := f.claimer.BuildClaimParamsV2(ctx, f.holder, nil)
+	require.NoError(t, err)
+	require.Len(t, bridges, 4)
+	require.Len(t, claims, 4)
+
+	for i := range bridges {
+		leaf := f.leaves[bridges[i].DepositCount]
+		wantRaw := metadataHex(leaf.Metadata)
+		wantHash := crypto.Keccak256Hash(leaf.Metadata).Hex()
+
+		require.Equal(t, wantRaw, bridges[i].Metadata, "bridge %d", bridges[i].DepositCount)
+		require.Equal(t, wantHash, bridges[i].MetadataHash, "bridge %d", bridges[i].DepositCount)
+
+		require.Equal(t, bridges[i].DepositCount, claims[i].DepositCount)
+		require.Equal(t, wantRaw, claims[i].Metadata, "claim %d", claims[i].DepositCount)
+		require.Equal(t, wantHash, claims[i].MetadataHash, "claim %d", claims[i].DepositCount)
+	}
+	// Empty metadata: "0x" and the hash of the empty string.
+	require.Equal(t, "0x", bridges[0].Metadata)
+	require.Equal(t, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", bridges[0].MetadataHash)
+
+	// v1 is unchanged: hash for the certificate exit, raw for the pending one.
+	v1, err := f.claimer.ListBridges(f.holder)
+	require.NoError(t, err)
+	require.Equal(t, circleDCTransfer, v1[0].DepositCount)
+	require.Equal(t, crypto.Keccak256Hash(nil).Hex(), v1[0].Metadata)
+	require.Equal(t, circleDCPendingTransfer, v1[1].DepositCount)
+	require.Equal(t, "0x", v1[1].Metadata)
+
+	// A v1 certificate exit with non-empty metadata shows the hash, v2 the raw bytes.
+	other := common.HexToAddress("0xB0B0000000000000000000000000000000000002")
+	v1, err = f.claimer.ListBridges(other)
+	require.NoError(t, err)
+	v2, err := f.claimer.ListBridgesV2(other)
+	require.NoError(t, err)
+	rawERC20 := f.leaves[circleDCOtherTransfer].Metadata
+	require.NotEmpty(t, rawERC20)
+	require.Equal(t, crypto.Keccak256Hash(rawERC20).Hex(), v1[0].Metadata)
+	require.Equal(t, metadataHex(rawERC20), v2[0].Metadata)
+	require.Equal(t, crypto.Keccak256Hash(rawERC20).Hex(), v2[0].MetadataHash)
 }

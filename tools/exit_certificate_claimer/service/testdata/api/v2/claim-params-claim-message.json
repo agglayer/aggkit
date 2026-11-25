@@ -84,6 +84,7 @@
       "leaf_type": 1,
       "deposit_count": 4,
       "l1_info_tree_index": 123456,
+      "metadata_hash": "0x4c05a509c33764f91bc2b0513a4325bc332d2154f8505d250742d4adf2b21d46",
       "claim_method": "claimMessage"
     }
   ]
