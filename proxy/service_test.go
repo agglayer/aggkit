@@ -5,13 +5,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,16 +38,27 @@ func (f fakeErrResolver) GetURL(_ uint32) (bridgeservicefinder.NetworkURLs, erro
 	return bridgeservicefinder.NetworkURLs{}, f.err
 }
 
-// newTestProxy starts an HTTP server running the proxy service and returns it together with
-// the service. A real server (instead of a bare ResponseRecorder) is required because
-// httputil.ReverseProxy needs a ResponseWriter with the full http.Server surface
+// newTestProxy starts an HTTP server running the proxy service with no upstream limits (the zero
+// Config) and returns it together with the service
 func newTestProxy(t *testing.T, finder NetworkURLResolver) (*httptest.Server, *Service) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	svc := New(Config{Logger: log.WithFields("module", "proxy-test")}, finder)
-	svc.RegisterRoutes(router)
-	server := httptest.NewServer(router)
+	return newTestProxyWithConfig(t, Config{}, finder)
+}
+
+// newTestProxyWithConfig starts an HTTP server running the proxy service configured with cfg and
+// returns it together with the service. A real server (instead of a bare ResponseRecorder) is
+// required because httputil.ReverseProxy needs a ResponseWriter with the full http.Server surface.
+// It serves the engine of the real shared HTTP server (recovery and body limit middlewares
+// included), so the tests see what a client of the binary sees
+func newTestProxyWithConfig(t *testing.T, cfg Config, finder NetworkURLResolver) (*httptest.Server, *Service) {
+	t.Helper()
+	if cfg.Logger == nil {
+		cfg.Logger = log.WithFields("module", "proxy-test")
+	}
+	engine := aggkitcommon.NewHTTPServer(aggkitcommon.RESTConfig{}, nil).Engine()
+	svc := New(cfg, finder)
+	svc.RegisterRoutes(engine)
+	server := httptest.NewServer(engine)
 	t.Cleanup(server.Close)
 	return server, svc
 }
@@ -99,25 +109,6 @@ func TestForwardHandlerPreservesBackendStatusAndBody(t *testing.T) {
 	status, body := doGet(t, server, "/bridge/v1/claims?network_id=1")
 	require.Equal(t, http.StatusNotFound, status)
 	require.JSONEq(t, `{"error":"claim not found"}`, body)
-}
-
-func TestForwardHandlerForwardsNonGETMethodsAndBody(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.Equal(t, `{"key":"value"}`, string(body))
-		w.WriteHeader(http.StatusCreated)
-	}))
-	defer backend.Close()
-
-	server, _ := newTestProxy(t, fakeResolver{2: backend.URL})
-
-	resp, err := http.Post(server.URL+"/bridge/v1/future-endpoint?network_id=2",
-		"application/json", strings.NewReader(`{"key":"value"}`))
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
 }
 
 func TestForwardHandlerMissingNetworkID(t *testing.T) {

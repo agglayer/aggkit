@@ -369,7 +369,13 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		depositCountPtr = &depositCount
 	}
 
-	fromAddress := c.Query(fromAddressParam)
+	fromAddress, err := parseOptionalAddressQuery(c, fromAddressParam)
+	if err != nil {
+		b.logger.Warnf("invalid %s parameter: %q", fromAddressParam, c.Query(fromAddressParam))
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
 
 	networkIDs, err := parseNetworkIDSliceParam(c, networkIDsParam)
 	if err != nil {
@@ -757,7 +763,13 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	originTokenAddress := c.Query(originTokenAddrParam)
+	originTokenAddress, err := parseOptionalAddressQuery(c, originTokenAddrParam)
+	if err != nil {
+		b.logger.Warnf("invalid %s parameter: %q", originTokenAddrParam, c.Query(originTokenAddrParam))
+		statusCode = http.StatusBadRequest
+		c.JSON(statusCode, gin.H{"error": err.Error()})
+		return
+	}
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c)
 	if err != nil {

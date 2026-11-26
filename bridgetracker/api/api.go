@@ -54,6 +54,11 @@ const (
 	// endpoint, and the activity endpoint
 	flushCacheQueryParam = "flush_cache"
 
+	// logIndexQueryParam selects, on the tracker's REST and WebSocket endpoints, which of the
+	// tx's BridgeEvents to track by the index of its log (see types.BridgeRequest.LogIndex).
+	// Optional: without it the tx must have emitted a single BridgeEvent
+	logIndexQueryParam = "log_index"
+
 	// pageNumberQueryParam/pageSizeQueryParam paginate the activity endpoint's result, same
 	// parameter names and 1-based page numbering as the bridge service's own paginated
 	// endpoints (see bridgeservice.pageNumberParam/pageSizeParam)
@@ -200,6 +205,7 @@ func runCommand(c *gin.Context, cmd command) {
 }
 
 // parseBridgeRequest builds a BridgeRequest from the network_id and tx_hash path parameters
+// plus the optional log_index query parameter
 func parseBridgeRequest(c *gin.Context) (*types.BridgeRequest, error) {
 	networkID, err := strconv.ParseUint(c.Param(networkIDParam), decimalBase, uint32BitSize)
 	if err != nil {
@@ -211,8 +217,27 @@ func parseBridgeRequest(c *gin.Context) (*types.BridgeRequest, error) {
 		return nil, fmt.Errorf("invalid %s parameter", txHashParam)
 	}
 
-	return &types.BridgeRequest{
+	req := &types.BridgeRequest{
 		NetworkID: uint32(networkID),
 		TxHash:    common.HexToHash(txHashStr),
-	}, nil
+	}
+	if logIndexStr, ok := c.GetQuery(logIndexQueryParam); ok {
+		logIndex, err := strconv.ParseUint(logIndexStr, decimalBase, uint32BitSize)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s parameter", logIndexQueryParam)
+		}
+		idx := uint32(logIndex)
+		req.LogIndex = &idx
+	}
+	return req, nil
+}
+
+// trackingIDFrom builds the TrackingID a BridgeRequest asks for: tx-only unless it selects a
+// log index
+func trackingIDFrom(req *types.BridgeRequest) domain.TrackingID {
+	id := domain.TrackingID{NetworkID: req.NetworkID, TxHash: req.TxHash}
+	if req.LogIndex != nil {
+		id.Log = domain.LogIndex(*req.LogIndex)
+	}
+	return id
 }

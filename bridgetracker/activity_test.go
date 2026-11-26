@@ -3,6 +3,7 @@ package bridgetracker
 import (
 	"context"
 	"errors"
+	"math"
 	"math/big"
 	"sync"
 	"testing"
@@ -15,6 +16,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
+
+// allActivity is a GetActivity page holding every entry, for tests that read the whole activity
+var allActivity = domain.ActivityPage{PageNumber: 1, PageSize: math.MaxUint32}
 
 var testFromAddress = common.HexToAddress("0x1111111111111111111111111111111111111111")
 
@@ -63,26 +67,26 @@ type fakeActivityScanner struct {
 	bridges     []*domain.ScannedBridge
 	err         error
 	warnings    []domain.ActivityWarning
-	invalidated []string
+	invalidated []domain.BridgeKey
 	hook        func(call int)
 	results     []activityScanResult
 
 	mu        sync.Mutex
 	calls     int
-	lastKnown map[string]domain.KnownBridge
+	lastKnown map[domain.BridgeKey]domain.KnownBridge
 }
 
 // activityScanResult is one fakeActivityScanner.results entry — see its own doc
 type activityScanResult struct {
 	bridges     []*domain.ScannedBridge
-	invalidated []string
+	invalidated []domain.BridgeKey
 	warnings    []domain.ActivityWarning
 	err         error
 }
 
 func (f *fakeActivityScanner) BridgesFrom(
-	_ context.Context, _ common.Address, known map[string]domain.KnownBridge,
-) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
+	_ context.Context, _ common.Address, known map[domain.BridgeKey]domain.KnownBridge,
+) ([]*domain.ScannedBridge, []domain.BridgeKey, []domain.ActivityWarning, error) {
 	f.mu.Lock()
 	f.calls++
 	call := f.calls
@@ -101,7 +105,7 @@ func (f *fakeActivityScanner) BridgesFrom(
 	}
 	out := make([]*domain.ScannedBridge, 0, len(f.bridges))
 	for _, b := range f.bridges {
-		if _, ok := known[string(b.Bridge.GlobalIndex)]; ok {
+		if _, ok := known[b.Key()]; ok {
 			continue
 		}
 		out = append(out, b)
@@ -221,7 +225,8 @@ func refreshAndGet(
 	if err := registry.RefreshAddress(ctx, addr); err != nil {
 		return nil, nil, err
 	}
-	return registry.GetActivity(ctx, addr, includeTracking, filter)
+	entries, _, warnings, err := registry.GetActivity(ctx, addr, includeTracking, filter, allActivity)
+	return entries, warnings, err
 }
 
 // TestActivityCache_UnclaimedBridgeIsRecheckedEveryCall verifies an unclaimed bridge's claim
@@ -236,7 +241,7 @@ func TestActivityCache_UnclaimedBridgeIsRecheckedEveryCall(t *testing.T) {
 
 	for range 2 {
 		require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-		entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+		entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
 		require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
@@ -257,7 +262,7 @@ func TestActivityCache_GetActivityIsCacheOnly(t *testing.T) {
 	cache := newTestActivityCache(scanner, claims)
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, entries, "nothing has been refreshed yet")
 	require.Equal(t, 0, scanner.calls, "GetActivity must never scan")
@@ -266,7 +271,7 @@ func TestActivityCache_GetActivityIsCacheOnly(t *testing.T) {
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 	require.Equal(t, 1, scanner.calls, "RefreshAddress is the one that scans")
 
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, true, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, 1, scanner.calls, "a later GetActivity must still never scan")
@@ -288,8 +293,53 @@ func TestActivityCache_IncludeTrackingRegistersUnclaimedBridge(t *testing.T) {
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
 	require.NotNil(t, entries[0].Tracking)
 
-	wantID := domain.TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+	wantID := domain.TrackingID{
+		NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash)),
+		Log: domain.LogIndex(uint32(bridge.BlockPos)),
+	}
 	require.Equal(t, wantID, entries[0].Tracking.ID())
+}
+
+// TestActivityCache_SameTxBridgesTrackedIndependently pins per-event tracking: two bridges
+// created by the same tx (different global indexes and log positions) are registered with the
+// tracker under their own event identity, so each gets its own snapshot instead of both sharing
+// the tx's
+func TestActivityCache_SameTxBridgesTrackedIndependently(t *testing.T) {
+	first, second := testBridge(1), testBridge(2)
+	first.BlockPos, second.BlockPos = 3, 9
+	scanner := &fakeActivityScanner{bridges: []*domain.ScannedBridge{
+		scannedBridge(first, testScannedNetworkID), scannedBridge(second, testScannedNetworkID),
+	}}
+	claims := &fakeActivityClaims{isClaimed: []bool{false, false}}
+	cache := newTestActivityCache(scanner, claims)
+	supervised := cache.refresher.supervised
+
+	// the tracker already resolved the second bridge only, to readyToClaim
+	secondID := domain.BridgeTrackingID(testScannedNetworkID, second)
+	_, err := supervised.Get(secondID, true)
+	require.NoError(t, err)
+	require.NoError(t, supervised.UpdateTracking(secondID,
+		domain.TrackingBridgeTx{Info: &BridgeInfo{NetworkID: testScannedNetworkID, LogIndex: 9}},
+		[]BridgeStepPath{
+			{Step: types.StepWaitingClaim, Status: types.StepStatusInProgress},
+			{Step: types.StepClaimed, Status: types.StepStatusPending},
+		}))
+
+	entries, _, err := refreshAndGet(t, cache, testFromAddress, true, types.ActivityFilterAll)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	byPos := make(map[uint64]*domain.ActivityEntry, len(entries))
+	for _, entry := range entries {
+		require.NotNil(t, entry.Tracking)
+		byPos[entry.Bridge.BlockPos] = entry
+	}
+	require.Equal(t, domain.LogIndex(3), byPos[3].Tracking.ID().Log)
+	require.Equal(t, domain.LogIndex(9), byPos[9].Tracking.ID().Log)
+	require.Nil(t, byPos[3].Tracking.Info(), "the first bridge must not inherit the second one's facts")
+	require.Equal(t, types.TrackerClaimStatusPending, byPos[3].TrackerClaimStatus)
+	require.NotNil(t, byPos[9].Tracking.Info())
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, byPos[9].TrackerClaimStatus)
+	require.Equal(t, 2, supervised.GetNumTracker(), "one tracker entry per bridge, not per tx")
 }
 
 // TestActivityCache_TrackerClaimStatusMirrorsClaimState pins how ActivityEntry.TrackerClaimStatus
@@ -402,7 +452,7 @@ func TestActivityCache_TrackerClaimedNeedsOnChainConfirmation(t *testing.T) {
 			claims := &fakeActivityClaims{isClaimed: []bool{false}}
 			cache := newTestActivityCache(scanner, claims)
 
-			id := TrackingID{NetworkID: testScannedNetworkID, TxHash: common.HexToHash(string(bridge.TxHash))}
+			id := domain.BridgeTrackingID(testScannedNetworkID, bridge)
 			_, err := cache.refresher.supervised.Get(id, true)
 			require.NoError(t, err)
 			tx := domain.TrackingBridgeTx{Info: &BridgeInfo{NetworkID: testScannedNetworkID}}
@@ -448,7 +498,7 @@ func TestActivityCache_SettledBridgeIsNeverRechecked(t *testing.T) {
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
@@ -456,7 +506,7 @@ func TestActivityCache_SettledBridgeIsNeverRechecked(t *testing.T) {
 	require.True(t, entries[0].Finalized)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, claim, entries[0].Claim)
 	require.Equal(t, 1, claims.isClaimedCalls)
@@ -514,13 +564,13 @@ func TestActivityCache_ClaimedButNotYetIndexedBridgeIsRetried(t *testing.T) {
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Nil(t, entries[0].Claim)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusClaimed, entries[0].ClaimStatus)
 	require.Equal(t, claim, entries[0].Claim)
@@ -555,7 +605,7 @@ func TestActivityCache_IsClaimedFailureReportsErrorStatus(t *testing.T) {
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusError, entries[0].ClaimStatus)
 	require.Nil(t, entries[0].Claim)
@@ -563,7 +613,7 @@ func TestActivityCache_IsClaimedFailureReportsErrorStatus(t *testing.T) {
 
 	// the error state is not settled: it is retried on the next refresh
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Equal(t, types.ClaimStatusUnclaimed, entries[0].ClaimStatus)
 	require.Equal(t, 2, claims.isClaimedCalls)
@@ -693,11 +743,11 @@ func TestActivityCache_ClaimedBridgeExcludedFromPendingButVisibleUnderAll(t *tes
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterPending)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterPending, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, entries, "a claimed bridge must not appear under filterBridges=pending")
 
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, claim, entries[0].Claim)
@@ -720,7 +770,7 @@ func TestActivityCache_ScannerReceivesGrowingKnownSet(t *testing.T) {
 	require.Empty(t, scanner.lastKnown, "nothing cached yet on the first refresh")
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	require.Contains(t, scanner.lastKnown, string(bridge.Bridge.GlobalIndex))
+	require.Contains(t, scanner.lastKnown, bridge.Key())
 }
 
 // TestActivityCache_SourceIsCarriedForwardAcrossRechecks verifies a bridge's Source (which
@@ -739,7 +789,7 @@ func TestActivityCache_SourceIsCarriedForwardAcrossRechecks(t *testing.T) {
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source)
@@ -747,7 +797,7 @@ func TestActivityCache_SourceIsCarriedForwardAcrossRechecks(t *testing.T) {
 	// second refresh: the scanner no longer reports it (already known), so this exercises the
 	// synthetic recheck path, not a fresh scan result
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, domain.ActivitySourceRPC, entries[0].Source, "Source must survive the recheck, not reset to empty")
@@ -766,16 +816,16 @@ func TestActivityCache_ForgetsInvalidatedBridges(t *testing.T) {
 	mustRegisterActivity(t, cache, testFromAddress, 0)
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 
 	// second refresh: the scanner no longer finds it at all, and reports it invalidated instead
 	scanner.bridges = nil
-	scanner.invalidated = []string{string(bridge.Bridge.GlobalIndex)}
+	scanner.invalidated = []domain.BridgeKey{bridge.Key()}
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, entries, "an invalidated bridge must be forgotten, not served with stale data")
 }
@@ -851,7 +901,7 @@ func TestActivityCache_RegisterAndAwaitWaitsForRefresh(t *testing.T) {
 		t.Fatal("RegisterAndAwait never returned after the refresh completed")
 	}
 
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 }
@@ -884,7 +934,7 @@ func TestActivityCache_RegisterAndAwaitTimeoutFallsBackToWhateverIsCached(t *tes
 	require.NoError(t, err)
 	require.False(t, ready, "timeout elapsed before any refresh completed")
 
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }
@@ -923,7 +973,7 @@ func TestActivityCache_TimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	cache.now = func() time.Time { return t1 }
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(t1))
 	require.True(t, entries[0].UpdatedAt.Equal(t1))
@@ -932,7 +982,7 @@ func TestActivityCache_TimestampsTrackCreationAndLastUpdate(t *testing.T) {
 	cache.now = func() time.Time { return t2 }
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(t1), "creation time must not change")
 	require.True(t, entries[0].UpdatedAt.Equal(t2), "update time must advance on every recheck")
@@ -954,7 +1004,7 @@ func TestActivityCache_CreatedAtUsesBridgeBlockTimestamp(t *testing.T) {
 	cache.now = func() time.Time { return now }
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].CreatedAt.Equal(time.Unix(int64(bridge.BlockTimestamp), 0)),
 		"the deposit's own block timestamp, not the tick's now")
@@ -976,14 +1026,14 @@ func TestActivityCache_TimestampsFreezeOnceSettled(t *testing.T) {
 	cache.now = func() time.Time { return t1 }
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].UpdatedAt.Equal(t1))
 
 	cache.now = func() time.Time { return t1.Add(time.Minute) }
 
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.True(t, entries[0].UpdatedAt.Equal(t1), "a settled entry is never refreshed again")
 }
@@ -1073,7 +1123,7 @@ func TestActivityCache_StaleRefreshDoesNotCorruptNewRegistrationAfterFlush(t *te
 	// stale refresh's eventual write (bridge #1) is trivially distinguishable from this one's
 	require.NoError(t, cache.RefreshAddress(t.Context(), testFromAddress))
 
-	entries, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err := cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.Equal(t, testScannedBridge(2).Bridge.GlobalIndex, entries[0].Bridge.GlobalIndex)
@@ -1082,7 +1132,7 @@ func TestActivityCache_StaleRefreshDoesNotCorruptNewRegistrationAfterFlush(t *te
 	close(release)
 	require.NoError(t, <-staleDone)
 
-	entries, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll)
+	entries, _, _, err = cache.GetActivity(t.Context(), testFromAddress, false, types.ActivityFilterAll, allActivity)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "the stale refresh must not add bridge #1 back into the new registration's cache")
 	require.Equal(t, testScannedBridge(2).Bridge.GlobalIndex, entries[0].Bridge.GlobalIndex,

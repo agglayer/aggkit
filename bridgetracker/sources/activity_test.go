@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/bridgeservice/client"
 	bridgeservicetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
@@ -200,8 +201,16 @@ func (f fakeNetworkLister) BridgeAddress(_ context.Context, networkID uint32) (c
 func knownBridge(b *bridgeservicetypes.BridgeResponse, source domain.ActivitySourceKind, final bool) domain.KnownBridge {
 	return domain.KnownBridge{
 		TxHash: b.TxHash, BlockNum: b.BlockNum, BlockTimestamp: b.BlockTimestamp, DepositCount: b.DepositCount,
-		Source: source, NetworkID: b.OriginNetwork, Final: final,
+		Source: source, NetworkID: b.OriginNetwork, Final: final, BlockPos: b.BlockPos, GlobalIndex: b.GlobalIndex,
+		BridgeHash: b.BridgeHash, Amount: b.Amount, DestinationNetwork: b.DestinationNetwork,
+		DestinationAddress: b.DestinationAddress,
 	}
+}
+
+// keyOf is the domain.BridgeKey of b, a bridge built by bridgeResponse (reported by its
+// OriginNetwork's own bridge service)
+func keyOf(b *bridgeservicetypes.BridgeResponse) domain.BridgeKey {
+	return domain.BridgeKey{NetworkID: b.OriginNetwork, DepositCount: b.DepositCount}
 }
 
 func bridgeResponse(networkID, destNetwork, depositCount uint32, from string, globalIndex int64) *bridgeservicetypes.BridgeResponse {
@@ -445,7 +454,9 @@ func TestScanBridgeService_StopsAtFirstKnownFinalBridge(t *testing.T) {
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]domain.KnownBridge{"2": knownBridge(known2, domain.ActivitySourceBridgeService, true)}
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		keyOf(known2): knownBridge(known2, domain.ActivitySourceBridgeService, true),
+	}
 	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 1, known, testLogger)
 	require.NoError(t, err)
 	require.Len(t, scan.bridges, 1)
@@ -474,9 +485,9 @@ func TestScanBridgeService_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T
 	client, err := source.services.aggkitBridgeClientFor(1)
 	require.NoError(t, err)
 
-	known := map[string]domain.KnownBridge{
-		"2": {Source: domain.ActivitySourceRPC, NetworkID: 1, DepositCount: 1, TxHash: "0x2"},
-		"1": knownBridge(finalBridge, domain.ActivitySourceBridgeService, true),
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		{NetworkID: 1, DepositCount: 1}: {Source: domain.ActivitySourceRPC, NetworkID: 1, DepositCount: 1, TxHash: "0x2"},
+		keyOf(finalBridge):              knownBridge(finalBridge, domain.ActivitySourceBridgeService, true),
 	}
 	scan, err := scanBridgeService(t.Context(), client, 1, testFromAddress, 10, known, testLogger)
 	require.NoError(t, err)
@@ -493,17 +504,22 @@ func TestScanBridgeService_UpgradesSourceOnceBridgeServiceCatchesUp(t *testing.T
 // or that has simply aged out of the window (BlockNum below the window's own FromBlock, which
 // just means it is no longer being watched, not that anything is wrong).
 func TestInvalidatedBridges(t *testing.T) {
-	known := map[string]domain.KnownBridge{
-		"1": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},           // in window, missing -> invalidated
-		"2": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},           // in window, found -> kept
-		"3": {NetworkID: 1, Source: domain.ActivitySourceRPC, BlockNum: 50},            // aged out of window -> kept
-		"4": {NetworkID: 1, Source: domain.ActivitySourceBridgeService, BlockNum: 150}, // bridge-sourced -> never invalidated
-		"5": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150},           // different network -> kept
+	key := func(networkID, depositCount uint32) domain.BridgeKey {
+		return domain.BridgeKey{NetworkID: networkID, DepositCount: depositCount}
 	}
-	foundThisCall := map[string]struct{}{"2": {}}
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		key(1, 1): {NetworkID: 1, DepositCount: 1, Source: domain.ActivitySourceRPC, BlockNum: 150}, // in window, missing -> invalidated
+		key(1, 2): {NetworkID: 1, DepositCount: 2, Source: domain.ActivitySourceRPC, BlockNum: 150}, // in window, found -> kept
+		key(1, 3): {NetworkID: 1, DepositCount: 3, Source: domain.ActivitySourceRPC, BlockNum: 50},  // aged out of window -> kept
+		// bridge-sourced -> never invalidated
+		key(1, 4): {NetworkID: 1, DepositCount: 4, Source: domain.ActivitySourceBridgeService, BlockNum: 150},
+		// different network (same deposit count as the invalidated one) -> kept
+		key(2, 1): {NetworkID: 2, DepositCount: 1, Source: domain.ActivitySourceRPC, BlockNum: 150},
+	}
+	foundThisCall := map[domain.BridgeKey]struct{}{key(1, 2): {}}
 
 	invalidated := invalidatedBridges(1, known, 100, foundThisCall)
-	require.ElementsMatch(t, []string{"1"}, invalidated)
+	require.ElementsMatch(t, []domain.BridgeKey{key(1, 1)}, invalidated)
 }
 
 // TestIsNetworkSynced verifies isNetworkSynced reads only its own side of the sync-status pair
@@ -674,7 +690,7 @@ func TestActivitySource_IsReadyToClaim(t *testing.T) {
 // TestActivitySource_ClaimInfo verifies ClaimInfo fetches the raw claim record by global index,
 // and returns nil (not an error) when the destination bridge service has not indexed it yet.
 func TestActivitySource_ClaimInfo(t *testing.T) {
-	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx", GlobalIndex: "1"}
+	claim := &bridgeservicetypes.ClaimResponse{TxHash: "0xclaimtx", GlobalIndex: "1", DestinationNetwork: 2}
 	svc := &fakeActivityBridgeService{
 		claimsByGlobalIndex: map[string]*bridgeservicetypes.ClaimResponse{"1": claim},
 	}
@@ -815,7 +831,7 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		url := svc.start(t)
 		lister := fakeNetworkLister{networkIDs: []uint32{1}, url: url}
 		source := activitySourceWithRPC(lister, stubRPCScanner{}) // RPC finds nothing new this time
-		known := map[string]domain.KnownBridge{"1": {Source: domain.ActivitySourceRPC}}
+		known := map[domain.BridgeKey]domain.KnownBridge{{NetworkID: 1}: {Source: domain.ActivitySourceRPC, NetworkID: 1}}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
@@ -841,7 +857,9 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		source := activitySourceWithRPC(lister, rpc)
 		// caller's cache has global index 2 (not reported by REST this call) at its original,
 		// now reorged-out block
-		known := map[string]domain.KnownBridge{"2": {TxHash: moved.TxHash, BlockNum: 100}}
+		known := map[domain.BridgeKey]domain.KnownBridge{
+			keyOf(moved): {TxHash: moved.TxHash, BlockNum: 100, NetworkID: 1, DepositCount: moved.DepositCount},
+		}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
@@ -888,9 +906,7 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		source := activitySourceWithRPC(lister, rpc)
 		// caller's cache has global index 3 at exactly the same TxHash/BlockNum the RPC scan
 		// still reports it at
-		known := map[string]domain.KnownBridge{
-			"3": {TxHash: unchanged.TxHash, BlockNum: unchanged.BlockNum},
-		}
+		known := map[domain.BridgeKey]domain.KnownBridge{keyOf(unchanged): knownBridge(unchanged, "", false)}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
@@ -908,8 +924,8 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		}}
 		source := activitySourceWithRPC(lister, rpc)
 		// caller's cache still has global index 3 at its original (now reorged-out) block
-		known := map[string]domain.KnownBridge{
-			"3": {TxHash: moved.TxHash, BlockNum: 100},
+		known := map[domain.BridgeKey]domain.KnownBridge{
+			keyOf(moved): {TxHash: moved.TxHash, BlockNum: 100, NetworkID: 2, DepositCount: moved.DepositCount},
 		}
 
 		items, _, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
@@ -955,28 +971,294 @@ func TestActivitySource_BridgesFrom_RPCMerge(t *testing.T) {
 		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
 		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{}, fromBlock: 100} // scans from 100, finds nothing
 		source := activitySourceWithRPC(lister, rpc)
-		known := map[string]domain.KnownBridge{
+		gone := domain.BridgeKey{NetworkID: 2, DepositCount: 9}
+		known := map[domain.BridgeKey]domain.KnownBridge{
 			// still within [100, ...) but no longer found there: reorged out, nothing has
 			// re-included it (yet)
-			"9": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150},
+			gone: {NetworkID: 2, DepositCount: 9, Source: domain.ActivitySourceRPC, BlockNum: 150},
 		}
 
 		items, invalidated, _, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
 		require.Empty(t, items)
-		require.Equal(t, []string{"9"}, invalidated)
+		require.Equal(t, []domain.BridgeKey{gone}, invalidated)
 	})
 
 	t.Run("RPC bridge previously known has aged out of the scanned window -> not invalidated", func(t *testing.T) {
 		lister := fakeMixedNetworkLister{networkIDs: []uint32{2}, urls: map[uint32]string{}}
 		rpc := stubRPCScanner{bridges: map[uint32][]*domain.ScannedBridge{}, fromBlock: 200} // window moved past block 150
 		source := activitySourceWithRPC(lister, rpc)
-		known := map[string]domain.KnownBridge{
-			"9": {NetworkID: 2, Source: domain.ActivitySourceRPC, BlockNum: 150}, // below the window's FromBlock now
+		known := map[domain.BridgeKey]domain.KnownBridge{
+			// below the window's FromBlock now
+			{NetworkID: 2, DepositCount: 9}: {NetworkID: 2, DepositCount: 9, Source: domain.ActivitySourceRPC, BlockNum: 150},
 		}
 
 		_, invalidated, _, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
 		require.NoError(t, err)
 		require.Empty(t, invalidated, "aging out of the window is expected, not a sign the bridge was reorged away")
 	})
+}
+
+// rawBridgeService serves GET /bridge/v1/bridges with raw bodies, so a test controls exactly what
+// is decoded: bridgePages[page] holds the bodies answered for that page_number, one per request
+// in order, the last one repeating. GET /bridge/v1/claims answers claims, as is
+func rawBridgeService(t *testing.T, bridgePages map[int][]string, claims string) string {
+	t.Helper()
+
+	var mu sync.Mutex
+	requests := make(map[int]int)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/bridge/v1/bridges", func(w http.ResponseWriter, r *http.Request) {
+		page, err := strconv.Atoi(r.URL.Query().Get("page_number"))
+		require.NoError(t, err)
+		mu.Lock()
+		bodies := bridgePages[page]
+		require.NotEmpty(t, bodies, "unexpected request of page %d", page)
+		body := bodies[min(requests[page], len(bodies)-1)]
+		requests[page]++
+		mu.Unlock()
+		_, _ = w.Write([]byte(body))
+	})
+	mux.HandleFunc("/bridge/v1/claims", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(claims))
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+// bridgesBody is the bridges endpoint response listing bridges (a nil entry is a JSON null),
+// reporting count of them
+func bridgesBody(t *testing.T, count int, bridges ...*bridgeservicetypes.BridgeResponse) string {
+	t.Helper()
+	body, err := json.Marshal(bridgeservicetypes.BridgesResult{Bridges: bridges, Count: count})
+	require.NoError(t, err)
+	return string(body)
+}
+
+// TestScanBridgeService_ValidatesTheResponse feeds scanBridgeService, through the real client,
+// bridge listings with a null entry: the scan fails as a whole, whatever the position of the entry
+// (after a valid one, on a later page, on the page 1 read again at the end of the pass), and
+// returns nothing of the pages it read before
+func TestScanBridgeService_ValidatesTheResponse(t *testing.T) {
+	const networkID = uint32(1)
+	b3 := bridgeResponse(networkID, 2, 2, testFromAddress, 3)
+	b2 := bridgeResponse(networkID, 2, 1, testFromAddress, 2)
+	b1 := bridgeResponse(networkID, 2, 0, testFromAddress, 1)
+
+	tests := []struct {
+		name     string
+		pageSize uint32
+		pages    map[int][]string
+		// wantContext is what the error says about where the null entry is
+		wantContext string
+	}{
+		{
+			name:        "null entry alone",
+			pageSize:    10,
+			pages:       map[int][]string{1: {`{"bridges":[null],"count":1}`}},
+			wantContext: "network 1 page 1",
+		},
+		{
+			name:        "null entry after a valid one",
+			pageSize:    10,
+			pages:       map[int][]string{1: {bridgesBody(t, 2, b2, nil)}},
+			wantContext: "bridges[1]",
+		},
+		{
+			name:        "null entry before a valid one",
+			pageSize:    10,
+			pages:       map[int][]string{1: {bridgesBody(t, 2, nil, b2)}},
+			wantContext: "bridges[0]",
+		},
+		{
+			name:     "null entry on page 2",
+			pageSize: 2,
+			pages: map[int][]string{
+				1: {bridgesBody(t, 3, b3, b2)},
+				2: {bridgesBody(t, 3, nil)},
+			},
+			wantContext: "network 1 page 2",
+		},
+		{
+			name:     "null entry on page 1 read again at the end of the pass",
+			pageSize: 2,
+			pages: map[int][]string{
+				1: {bridgesBody(t, 3, b3, b2), bridgesBody(t, 3, nil, b2)},
+				2: {bridgesBody(t, 3, b1)},
+			},
+			wantContext: "network 1 page 1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := rawBridgeService(t, tt.pages, "")
+			source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{networkID}, url: url}, nil, testLogger)
+			svc, err := source.services.aggkitBridgeClientFor(networkID)
+			require.NoError(t, err)
+
+			scan, err := scanBridgeService(t.Context(), svc, networkID, testFromAddress, tt.pageSize, nil, testLogger)
+			requireInvalidResponse(t, err)
+			require.ErrorContains(t, err, tt.wantContext)
+			require.Empty(t, scan.bridges)
+			require.Empty(t, scan.listed)
+			require.Empty(t, scan.removed)
+		})
+	}
+
+	t.Run("valid listing", func(t *testing.T) {
+		url := rawBridgeService(t, map[int][]string{
+			1: {bridgesBody(t, 3, b3, b2)},
+			2: {bridgesBody(t, 3, b1)},
+		}, "")
+		source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{networkID}, url: url}, nil, testLogger)
+		svc, err := source.services.aggkitBridgeClientFor(networkID)
+		require.NoError(t, err)
+
+		scan, err := scanBridgeService(t.Context(), svc, networkID, testFromAddress, 2, nil, testLogger)
+		require.NoError(t, err)
+		require.Len(t, scan.bridges, 3)
+		require.Equal(t, b3, scan.bridges[0].Bridge)
+		require.Equal(t, b2, scan.bridges[1].Bridge)
+		require.Equal(t, b1, scan.bridges[2].Bridge)
+	})
+}
+
+// TestCheckBridgesPage verifies a page with a null entry is rejected, with where the entry is
+func TestCheckBridgesPage(t *testing.T) {
+	valid := bridgeResponse(3, 1, 0, testFromAddress, 1)
+
+	require.NoError(t, checkBridgesPage(3, 2, nil))
+	require.NoError(t, checkBridgesPage(3, 2, []*bridgeservicetypes.BridgeResponse{valid, valid}))
+
+	err := checkBridgesPage(3, 2, []*bridgeservicetypes.BridgeResponse{valid, nil})
+	requireInvalidResponse(t, err)
+	require.ErrorContains(t, err, "network 3 page 2 entry 1")
+}
+
+// TestActivitySource_BridgesFrom_MalformedNetworkDoesNotAffectHealthyOne verifies a network whose
+// bridge service answers a listing with a null entry degrades alone: its error is reported as a
+// warning, what is cached of it is kept (nothing is invalidated), and the healthy network's
+// bridges are returned
+func TestActivitySource_BridgesFrom_MalformedNetworkDoesNotAffectHealthyOne(t *testing.T) {
+	malformedURL := rawBridgeService(t, map[int][]string{1: {`{"bridges":[null],"count":1}`}}, "")
+	healthy := &fakeActivityBridgeService{
+		bridgesByNetwork: map[uint32][]*bridgeservicetypes.BridgeResponse{
+			2: {bridgeResponse(2, 1, 0, testFromAddress, 5)},
+		},
+	}
+	lister := fakeMixedNetworkLister{
+		networkIDs: []uint32{1, 2},
+		urls:       map[uint32]string{1: malformedURL, 2: healthy.start(t)},
+	}
+	source := mustNewActivitySource(t, lister, nil, testLogger)
+
+	cached := bridgeResponse(1, 2, 0, testFromAddress, 1)
+	known := map[domain.BridgeKey]domain.KnownBridge{
+		keyOf(cached): knownBridge(cached, domain.ActivitySourceBridgeService, false),
+	}
+
+	items, invalidated, warnings, err := source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), known)
+	require.NoError(t, err)
+
+	require.Len(t, items, 1, "the healthy network's bridge is returned")
+	require.Equal(t, uint32(2), items[0].NetworkID)
+	require.Equal(t, int64(5), items[0].Bridge.GlobalIndex.ToBigInt().Int64())
+	require.Empty(t, invalidated, "what is cached of the malformed network is kept")
+
+	require.Len(t, warnings, 1)
+	require.Equal(t, uint32(1), warnings[0].NetworkID)
+	require.Contains(t, warnings[0].Message, "network 1")
+	require.Contains(t, warnings[0].Message, client.ErrInvalidResponse.Error())
+}
+
+// TestActivitySource_ClaimInfo_ValidatesTheResponse feeds ClaimInfo, through the real client, the
+// claims responses a bridge service can answer with
+func TestActivitySource_ClaimInfo_ValidatesTheResponse(t *testing.T) {
+	const destination = uint32(2)
+	// the bridge of deposit count 7 sent from mainnet, as the bridge service lists it
+	bridge := &domain.ScannedBridge{
+		Bridge:    bridgeResponse(0, destination, 7, testFromAddress, 0),
+		NetworkID: 0,
+	}
+	bridge.Bridge.GlobalIndex = mainnetBridgeGlobalIndex
+	right := claimJSON(quoted(mainnetBridgeGlobalIndex), destination, "0x0d", 50)
+	other := claimJSON(quoted("999"), destination, "0x0e", 60)
+
+	tests := []struct {
+		name        string
+		body        string
+		wantTx      string
+		wantInvalid bool
+	}{
+		{name: "valid claim", body: claimsBody(1, right), wantTx: "0x0d"},
+		{name: "no claim", body: claimsBody(0)},
+		{name: "empty list with count 1", body: claimsBody(1), wantInvalid: true},
+		{name: "null claim", body: claimsBody(1, "null"), wantInvalid: true},
+		{name: "null claim after a valid one", body: claimsBody(2, right, "null"), wantInvalid: true},
+		{name: "global index of another claim", body: claimsBody(1, other), wantInvalid: true},
+		{name: "requested claim is not the first", body: claimsBody(2, other, right), wantTx: "0x0d"},
+		{
+			name:        "right global index on another destination network",
+			body:        claimsBody(1, claimJSON(quoted(mainnetBridgeGlobalIndex), 5, "0x0d", 50)),
+			wantInvalid: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := rawBridgeService(t, nil, tt.body)
+			source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{destination}, url: url}, nil, testLogger)
+
+			claim, err := source.ClaimInfo(t.Context(), bridge)
+
+			switch {
+			case tt.wantInvalid:
+				requireInvalidResponse(t, err)
+				require.Nil(t, claim)
+			case tt.wantTx == "":
+				require.NoError(t, err)
+				require.Nil(t, claim)
+			default:
+				require.NoError(t, err)
+				require.NotNil(t, claim)
+				require.Equal(t, bridgeservicetypes.Hash(tt.wantTx), claim.TxHash)
+			}
+		})
+	}
+
+	t.Run("legacy zkEVM claim identified by its bare deposit count", func(t *testing.T) {
+		legacy := &domain.ScannedBridge{Bridge: bridgeResponse(0, 1, 7, testFromAddress, 0), NetworkID: 0}
+		legacy.Bridge.GlobalIndex = mainnetBridgeGlobalIndex
+		url := rawBridgeService(t, nil, claimsBody(1, claimJSON(quoted("7"), 1, "0x0d", 50)))
+		source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{1}, url: url}, nil, testLogger)
+
+		claim, err := source.ClaimInfo(t.Context(), legacy)
+		require.NoError(t, err)
+		require.NotNil(t, claim)
+		require.Equal(t, bridgeservicetypes.Hash("0x0d"), claim.TxHash)
+
+		// the same claim is not the one of a bridge to any other network
+		notLegacy := &domain.ScannedBridge{Bridge: bridgeResponse(0, 2, 7, testFromAddress, 0), NetworkID: 0}
+		notLegacy.Bridge.GlobalIndex = mainnetBridgeGlobalIndex
+		url = rawBridgeService(t, nil, claimsBody(1, claimJSON(quoted("7"), 2, "0x0d", 50)))
+		source = mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{2}, url: url}, nil, testLogger)
+
+		claim, err = source.ClaimInfo(t.Context(), notLegacy)
+		requireInvalidResponse(t, err)
+		require.Nil(t, claim)
+	})
+
+	for _, globalIndex := range []bridgeservicetypes.BigIntString{"garbage", "-1"} {
+		t.Run(fmt.Sprintf("a bridge with the invalid global index %q has no claim to look for", globalIndex),
+			func(t *testing.T) {
+				invalid := &domain.ScannedBridge{Bridge: bridgeResponse(0, destination, 7, testFromAddress, 0), NetworkID: 0}
+				invalid.Bridge.GlobalIndex = globalIndex
+				url := rawBridgeService(t, nil, claimsBody(1, claimJSON(quoted("0"), destination, "0x0d", 50)))
+				source := mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{destination}, url: url}, nil, testLogger)
+
+				claim, err := source.ClaimInfo(t.Context(), invalid)
+				require.ErrorContains(t, err, "invalid global index")
+				require.Nil(t, claim)
+			})
+	}
 }

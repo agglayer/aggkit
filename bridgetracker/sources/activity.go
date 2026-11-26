@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/agglayer/aggkit/bridgeservice/client"
@@ -147,7 +146,7 @@ type networkScanResult struct {
 // two sources are queried in parallel.
 func (s *ActivitySource) scanNetwork(
 	ctx context.Context, networkID uint32, addr string, fromAddress common.Address,
-	known map[string]domain.KnownBridge,
+	known map[domain.BridgeKey]domain.KnownBridge,
 ) networkScanResult {
 	var res networkScanResult
 	var wg sync.WaitGroup
@@ -203,23 +202,39 @@ func isNetworkSynced(networkID uint32, status *bridgeservicetypes.SyncStatus) bo
 // bridge service does not already account for: a bridge the bridge service listed this call
 // (listedByBridgeService) or that is cached from the bridge service (known Source ==
 // domain.ActivitySourceBridgeService) is ignored — the bridge service is the source of record,
-// and while it cannot be scanned its entries are kept as they are. Of the rest, a bridge already
-// known at the same location is skipped too (nothing to do, and so no claim/readiness re-check
-// triggered by it), while one a reorg moved to another block/tx gets through so the cache is
-// corrected instead of trusting stale data forever (see agglayer/aggkit#1837's reorg-risk
-// discussion). It reports how many bridges it appended and how many of those are corrections.
+// and while it cannot be scanned its entries are kept as they are. An RPC candidate that
+// contradicts what the bridge service reports for the same BridgeKey (another location or other
+// contents, see domain.SameBridge) is logged as a conflicting observation and dropped, never
+// silently picked by iteration order. Of the rest, a bridge already known as
+// the very same event is skipped too (nothing to do, and so no claim/readiness re-check triggered
+// by it), while one that changed — a reorg moved it to another block/tx, or it now reports another
+// block position or contents — gets through so the cache is corrected instead of trusting stale
+// data forever (see agglayer/aggkit#1837's reorg-risk discussion). It reports how many bridges it
+// appended and how many of those are corrections.
 func appendRPCBridges(
-	all []*domain.ScannedBridge, candidates []*domain.ScannedBridge, known map[string]domain.KnownBridge,
-	listedByBridgeService map[string]struct{},
+	all []*domain.ScannedBridge, candidates []*domain.ScannedBridge, known map[domain.BridgeKey]domain.KnownBridge,
+	listedByBridgeService map[domain.BridgeKey]*bridgeservicetypes.BridgeResponse, logger aggkitcommon.Logger,
 ) ([]*domain.ScannedBridge, int, int) {
 	var added, corrected int
 	for _, b := range candidates {
-		key := string(b.Bridge.GlobalIndex)
-		if _, ok := listedByBridgeService[key]; ok {
+		key := b.Key()
+		if listed, ok := listedByBridgeService[key]; ok {
+			if !domain.SameBridge(listed, b.Bridge) {
+				logConflictingRPCBridge(logger, key, listed, b.Bridge)
+			}
 			continue
 		}
 		if prev, ok := known[key]; ok {
-			if prev.Source == domain.ActivitySourceBridgeService || prev.SameLocation(b.Bridge) {
+			if prev.Source == domain.ActivitySourceBridgeService {
+				if !prev.SameBridge(b.Bridge) {
+					logger.Warnf("activity: conflicting observations of bridge %s: the RPC fallback reports tx %s "+
+						"block %d pos %d, the bridge service last reported tx %s block %d pos %d: keeping the bridge "+
+						"service's", key, b.Bridge.TxHash, b.Bridge.BlockNum, b.Bridge.BlockPos,
+						prev.TxHash, prev.BlockNum, prev.BlockPos)
+				}
+				continue
+			}
+			if prev.SameBridge(b.Bridge) {
 				continue
 			}
 			corrected++
@@ -230,7 +245,18 @@ func appendRPCBridges(
 	return all, added, corrected
 }
 
-// invalidatedBridges returns the GlobalIndex (decimal string, see domain.KnownBridge) of every
+// logConflictingRPCBridge warns that the RPC fallback reported rpc for key while the bridge service
+// listed listed, a different event: the bridge service's is kept
+func logConflictingRPCBridge(
+	logger aggkitcommon.Logger, key domain.BridgeKey, listed, rpc *bridgeservicetypes.BridgeResponse,
+) {
+	logger.Warnf("activity: conflicting observations of bridge %s: the RPC fallback reports tx %s block %d pos %d "+
+		"hash %s, the bridge service lists tx %s block %d pos %d hash %s: keeping the bridge service's",
+		key, rpc.TxHash, rpc.BlockNum, rpc.BlockPos, rpc.BridgeHash,
+		listed.TxHash, listed.BlockNum, listed.BlockPos, listed.BridgeHash)
+}
+
+// invalidatedBridges returns the BridgeKey of every
 // entry in known that: belongs to networkID (see KnownBridge.NetworkID), was last cached from
 // the RPC fallback (Source == domain.ActivitySourceRPC — bridge-service-sourced entries are
 // checked against the bridge service's own listing instead, see scanBridgeService), has a
@@ -241,9 +267,10 @@ func appendRPCBridges(
 // (yet); see domain.ActivityBridgeScanner.BridgesFrom's invalidated return for what a caller must
 // do with the result.
 func invalidatedBridges(
-	networkID uint32, known map[string]domain.KnownBridge, rpcFromBlock uint64, foundThisCall map[string]struct{},
-) []string {
-	var invalidated []string
+	networkID uint32, known map[domain.BridgeKey]domain.KnownBridge, rpcFromBlock uint64,
+	foundThisCall map[domain.BridgeKey]struct{},
+) []domain.BridgeKey {
+	var invalidated []domain.BridgeKey
 	for key, k := range known {
 		if k.NetworkID != networkID || k.Source != domain.ActivitySourceRPC || k.BlockNum < rpcFromBlock {
 			continue
@@ -291,8 +318,8 @@ func invalidatedBridges(
 // Every network whose scan detected a reorg (a known bridge corrected or invalidated) counts it
 // in the activity reorg metrics (see bridgetracker/metrics).
 func (s *ActivitySource) BridgesFrom(
-	ctx context.Context, fromAddress common.Address, known map[string]domain.KnownBridge,
-) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning, error) {
+	ctx context.Context, fromAddress common.Address, known map[domain.BridgeKey]domain.KnownBridge,
+) ([]*domain.ScannedBridge, []domain.BridgeKey, []domain.ActivityWarning, error) {
 	addr := fromAddress.Hex()
 
 	networkIDs := s.finder.NetworkIDs()
@@ -315,30 +342,30 @@ func (s *ActivitySource) BridgesFrom(
 	wg.Wait()
 
 	var all []*domain.ScannedBridge
-	var invalidated []string
+	var invalidated []domain.BridgeKey
 	var warnings []domain.ActivityWarning
 	for i, networkID := range networkIDs {
 		res := results[i]
 		var found []*domain.ScannedBridge
-		var removed []string
+		var removed []domain.BridgeKey
 		corrected := 0
 
 		if res.rpcErr == nil && s.rpc != nil {
-			foundThisCall := make(map[string]struct{}, len(res.rest.listed)+len(res.rpcBridges))
+			foundThisCall := make(map[domain.BridgeKey]struct{}, len(res.rest.listed)+len(res.rpcBridges))
 			if res.restErr == nil {
 				for key := range res.rest.listed {
 					foundThisCall[key] = struct{}{}
 				}
 			}
 			for _, b := range res.rpcBridges {
-				foundThisCall[string(b.Bridge.GlobalIndex)] = struct{}{}
+				foundThisCall[b.Key()] = struct{}{}
 			}
 			removed = append(removed, invalidatedBridges(networkID, known, res.rpcFromBlock, foundThisCall)...)
 		}
 
 		if res.restErr != nil {
 			if s.rpc != nil && res.rpcErr == nil {
-				found, _, corrected = appendRPCBridges(nil, res.rpcBridges, known, nil)
+				found, _, corrected = appendRPCBridges(nil, res.rpcBridges, known, nil, s.logger)
 			}
 			warnings = append(warnings, s.bridgeServiceWarning(networkID, fromAddress, res.restErr,
 				s.rpc != nil && res.rpcErr == nil))
@@ -348,7 +375,7 @@ func (s *ActivitySource) BridgesFrom(
 			corrected = res.rest.corrected
 			if res.rpcErr == nil && len(res.rpcBridges) > 0 {
 				var added, rpcCorrected int
-				found, added, rpcCorrected = appendRPCBridges(found, res.rpcBridges, known, res.rest.listed)
+				found, added, rpcCorrected = appendRPCBridges(found, res.rpcBridges, known, res.rest.listed, s.logger)
 				corrected += rpcCorrected
 				if added > 0 && !isNetworkSynced(networkID, res.syncStatus) {
 					warnings = append(warnings, s.warnf(networkID,
@@ -368,15 +395,15 @@ func (s *ActivitySource) BridgesFrom(
 
 // removedNotFound deduplicates removed and drops every key found again this call (found wins:
 // the bridge was re-included), so each removal is reported and counted once
-func removedNotFound(removed []string, found []*domain.ScannedBridge) []string {
+func removedNotFound(removed []domain.BridgeKey, found []*domain.ScannedBridge) []domain.BridgeKey {
 	if len(removed) == 0 {
 		return nil
 	}
-	skip := make(map[string]struct{}, len(found)+len(removed))
+	skip := make(map[domain.BridgeKey]struct{}, len(found)+len(removed))
 	for _, b := range found {
-		skip[string(b.Bridge.GlobalIndex)] = struct{}{}
+		skip[b.Key()] = struct{}{}
 	}
-	out := make([]string, 0, len(removed))
+	out := make([]domain.BridgeKey, 0, len(removed))
 	for _, key := range removed {
 		if _, ok := skip[key]; ok {
 			continue
@@ -384,7 +411,7 @@ func removedNotFound(removed []string, found []*domain.ScannedBridge) []string {
 		skip[key] = struct{}{}
 		out = append(out, key)
 	}
-	slices.Sort(out)
+	slices.SortFunc(out, domain.BridgeKey.Compare)
 	return out
 }
 
@@ -451,13 +478,14 @@ type bridgeServiceScan struct {
 	// bridges is every bridge to hand back to the caller: new ones, a fresh read of every known
 	// non-final one (relabeled domain.ActivitySourceBridgeService, which upgrades an entry found
 	// through the RPC fallback), and a known final one reported at another location (a reorg
-	// deeper than the finality in use). One per GlobalIndex, newest first
+	// deeper than the finality in use). One per BridgeKey, newest first
 	bridges []*domain.ScannedBridge
-	// listed is the GlobalIndex of every bridge the bridge service listed in the pages read
-	listed map[string]struct{}
+	// listed is every bridge the bridge service listed in the pages read, by BridgeKey (the
+	// freshest read of each)
+	listed map[domain.BridgeKey]*bridgeservicetypes.BridgeResponse
 	// removed is every known non-final entry of this network the listing proves gone (see
 	// bridgeListScan.removedEntries)
-	removed []string
+	removed []domain.BridgeKey
 	// corrected is how many known entries were re-read at a different location
 	corrected int
 }
@@ -483,7 +511,7 @@ type bridgeServiceScan struct {
 // network's entries as they are, never read the failure as the bridges being gone
 func scanBridgeService(
 	ctx context.Context, svc *client.Client, networkID uint32, fromAddress string, pageSize uint32,
-	known map[string]domain.KnownBridge, logger aggkitcommon.Logger,
+	known map[domain.BridgeKey]domain.KnownBridge, logger aggkitcommon.Logger,
 ) (bridgeServiceScan, error) {
 	scan, complete, err := scanBridgeServiceOnce(ctx, svc, networkID, fromAddress, pageSize, known, logger)
 	if err != nil || complete {
@@ -506,18 +534,30 @@ func scanBridgeService(
 // changed while it was paged (see scanBridgeService)
 func scanBridgeServiceOnce(
 	ctx context.Context, svc *client.Client, networkID uint32, fromAddress string, pageSize uint32,
-	known map[string]domain.KnownBridge, logger aggkitcommon.Logger,
+	known map[domain.BridgeKey]domain.KnownBridge, logger aggkitcommon.Logger,
 ) (bridgeServiceScan, bool, error) {
 	if pageSize == 0 {
 		pageSize = bridgetracker.DefaultActivitySourceBridgeServicePageSize
 	}
 	getPage := func(page uint32) (*bridgeservicetypes.BridgesResult, error) {
-		return svc.GetBridges(ctx, client.GetBridgesParams{
+		res, err := svc.GetBridges(ctx, client.GetBridgesParams{
 			NetworkID:   networkID,
 			FromAddress: &fromAddress,
 			PageNumber:  &page,
 			PageSize:    &pageSize,
 		})
+		if errors.Is(err, client.ErrInvalidResponse) {
+			return nil, fmt.Errorf("network %d page %d: %w", networkID, page, err)
+		}
+		if err != nil {
+			return nil, err
+		}
+		// the client already rejects a null entry: checked again so a page is only ever read
+		// whole and valid, whatever produced it
+		if err := checkBridgesPage(networkID, page, res.Bridges); err != nil {
+			return nil, err
+		}
+		return res, nil
 	}
 
 	list := newBridgeListScan(networkID, known, logger)
@@ -575,18 +615,30 @@ func scanBridgeServiceOnce(
 	}, complete, nil
 }
 
+// checkBridgesPage rejects a page of a network's bridge listing holding a null entry, so the scan
+// never reads, nor returns, a partially valid page
+func checkBridgesPage(networkID, page uint32, bridges []*bridgeservicetypes.BridgeResponse) error {
+	for i, b := range bridges {
+		if b == nil {
+			return fmt.Errorf("network %d page %d entry %d: %w: the bridge is null",
+				networkID, page, i, client.ErrInvalidResponse)
+		}
+	}
+	return nil
+}
+
 // bridgeListScan is the state of one pass over a network's bridge listing (see
 // scanBridgeServiceOnce)
 type bridgeListScan struct {
 	networkID uint32
-	known     map[string]domain.KnownBridge
+	known     map[domain.BridgeKey]domain.KnownBridge
 	logger    aggkitcommon.Logger
 	// pending is every known non-final entry of this network not listed yet
-	pending map[string]domain.KnownBridge
-	// listed is every GlobalIndex listed so far
-	listed map[string]struct{}
-	// emitted maps a GlobalIndex to its position in bridges
-	emitted   map[string]int
+	pending map[domain.BridgeKey]domain.KnownBridge
+	// listed is every bridge listed so far, by BridgeKey (the freshest read of each)
+	listed map[domain.BridgeKey]*bridgeservicetypes.BridgeResponse
+	// emitted maps a BridgeKey to its position in bridges
+	emitted   map[domain.BridgeKey]int
 	bridges   []*domain.ScannedBridge
 	corrected int
 	// maxDepositCount is the highest deposit count listed so far (valid when anyListed)
@@ -595,9 +647,9 @@ type bridgeListScan struct {
 }
 
 func newBridgeListScan(
-	networkID uint32, known map[string]domain.KnownBridge, logger aggkitcommon.Logger,
+	networkID uint32, known map[domain.BridgeKey]domain.KnownBridge, logger aggkitcommon.Logger,
 ) *bridgeListScan {
-	pending := make(map[string]domain.KnownBridge)
+	pending := make(map[domain.BridgeKey]domain.KnownBridge)
 	for key, k := range known {
 		if k.NetworkID == networkID && !k.Final {
 			pending[key] = k
@@ -605,39 +657,43 @@ func newBridgeListScan(
 	}
 	return &bridgeListScan{
 		networkID: networkID, known: known, logger: logger, pending: pending,
-		listed: make(map[string]struct{}), emitted: make(map[string]int),
+		listed:  make(map[domain.BridgeKey]*bridgeservicetypes.BridgeResponse),
+		emitted: make(map[domain.BridgeKey]int),
 	}
 }
 
 // visit processes one listed bridge and reports whether the scan can stop there: b is known and
-// final at the same location, and no non-final known bridge of this network is still to be
-// reached further down the listing
+// final as the very same bridge event (see domain.SameBridge), and no non-final known bridge of
+// this network is still to be reached further down the listing
 func (l *bridgeListScan) visit(b *bridgeservicetypes.BridgeResponse) bool {
-	key := string(b.GlobalIndex)
 	scanned := &domain.ScannedBridge{Bridge: b, NetworkID: l.networkID, Source: domain.ActivitySourceBridgeService}
+	key := scanned.Key()
 	if i, ok := l.emitted[key]; ok {
 		l.bridges[i] = scanned // listed again (page 1 re-read, or pages shifted): keep the freshest read
+		l.listed[key] = b
 		return false
 	}
 	if _, ok := l.listed[key]; ok {
 		return false
 	}
-	l.listed[key] = struct{}{}
+	l.listed[key] = b
 	if !l.anyListed || b.DepositCount > l.maxDepositCount {
 		l.maxDepositCount, l.anyListed = b.DepositCount, true
 	}
 
 	prev, isKnown := l.known[key]
-	if isKnown && prev.Final && prev.SameLocation(b) {
+	if isKnown && prev.Final && prev.SameBridge(b) {
 		return !l.pendingBelow(b.DepositCount)
 	}
 	delete(l.pending, key)
-	if isKnown && !prev.SameLocation(b) {
+	if isKnown && !prev.SameBridge(b) {
 		l.corrected++
 		if prev.Final {
-			l.logger.Warnf("activity: bridge with global index %s on network %d was final at tx %s block %d "+
-				"but is now listed at tx %s block %d (a reorg deeper than the finality in use?): correcting it",
-				key, l.networkID, prev.TxHash, prev.BlockNum, b.TxHash, b.BlockNum)
+			l.logger.Warnf("activity: bridge %s (global index %s) was final at tx %s block %d pos %d "+
+				"but is now listed at tx %s block %d pos %d (global index %s; a reorg deeper than the finality in "+
+				"use, or contradictory data?): correcting it",
+				key, prev.GlobalIndex, prev.TxHash, prev.BlockNum, prev.BlockPos, b.TxHash, b.BlockNum, b.BlockPos,
+				b.GlobalIndex)
 		}
 	}
 	l.emitted[key] = len(l.bridges)
@@ -646,10 +702,11 @@ func (l *bridgeListScan) visit(b *bridgeservicetypes.BridgeResponse) bool {
 }
 
 // changedSinceListed reports whether b, read again on page 1 at the end of a pass, was not listed
-// by the pass yet or was listed at another location (tx_hash / block_num): the listing changed
-// while the pass paged. Call it before visit(b)
+// by the pass yet or was listed as another bridge event (another tx_hash / block_num, block
+// position or contents, see domain.SameBridge): the listing changed while the pass paged. Call it
+// before visit(b)
 func (l *bridgeListScan) changedSinceListed(b *bridgeservicetypes.BridgeResponse) bool {
-	key := string(b.GlobalIndex)
+	key := domain.BridgeKey{NetworkID: l.networkID, DepositCount: b.DepositCount}
 	if _, ok := l.listed[key]; !ok {
 		return true
 	}
@@ -657,8 +714,7 @@ func (l *bridgeListScan) changedSinceListed(b *bridgeservicetypes.BridgeResponse
 	if !ok {
 		return false // a known final bridge the pass stopped at: not re-read
 	}
-	prev := l.bridges[i].Bridge
-	return !strings.EqualFold(string(prev.TxHash), string(b.TxHash)) || prev.BlockNum != b.BlockNum
+	return !domain.SameBridge(l.bridges[i].Bridge, b)
 }
 
 // pendingBelow reports whether a non-final known bridge of this network that has not been listed
@@ -681,15 +737,15 @@ func (l *bridgeListScan) pendingBelow(depositCount uint32) bool {
 //     indexed past it — it listed a later deposit of this sender on this network — since until
 //     then it may simply not be indexed yet (the RPC window check, see invalidatedBridges,
 //     covers it meanwhile)
-func (l *bridgeListScan) removedEntries() []string {
-	var removed []string
+func (l *bridgeListScan) removedEntries() []domain.BridgeKey {
+	var removed []domain.BridgeKey
 	for key, k := range l.pending {
 		if k.Source == domain.ActivitySourceRPC && (!l.anyListed || l.maxDepositCount <= k.DepositCount) {
 			continue
 		}
 		removed = append(removed, key)
 	}
-	slices.Sort(removed)
+	slices.SortFunc(removed, domain.BridgeKey.Compare)
 	return removed
 }
 
@@ -711,9 +767,14 @@ func (s *ActivitySource) ClaimInfo(
 		return nil, err
 	}
 
+	globalIndex, ok := parseGlobalIndex(bridge.Bridge.GlobalIndex)
+	if !ok {
+		return nil, fmt.Errorf("bridge tx=%s has an invalid global index %q",
+			bridge.Bridge.TxHash, bridge.Bridge.GlobalIndex)
+	}
 	res, err := svc.GetClaims(ctx, client.GetClaimsParams{
 		NetworkID:   bridge.Bridge.DestinationNetwork,
-		GlobalIndex: bridge.Bridge.GlobalIndex.ToBigInt(),
+		GlobalIndex: globalIndex,
 	})
 	if isNotFound(err) {
 		return nil, nil
@@ -722,10 +783,17 @@ func (s *ActivitySource) ClaimInfo(
 		return nil, fmt.Errorf("fetching claim of global index %s on network %d: %w",
 			bridge.Bridge.GlobalIndex, bridge.Bridge.DestinationNetwork, err)
 	}
-	if res.Count == 0 || len(res.Claims) == 0 {
-		return nil, nil
+	claim, err := selectClaim(res, claimQuery{
+		globalIndex:        globalIndex,
+		networkID:          bridge.NetworkID,
+		destinationNetwork: bridge.Bridge.DestinationNetwork,
+		depositCount:       bridge.Bridge.DepositCount,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("claims of global index %s on network %d: %w",
+			bridge.Bridge.GlobalIndex, bridge.Bridge.DestinationNetwork, err)
 	}
-	return res.Claims[0], nil
+	return claim, nil
 }
 
 // IsReadyToClaim implements bridgetracker.ActivityClaimChecker: it resolves the L1 info tree

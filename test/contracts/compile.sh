@@ -43,3 +43,9 @@ rm -f IClaimMock.abi
 rm -f IClaimMock.bin
 rm -f IClaimMockCaller.abi
 rm -f IClaimMockCaller.bin
+
+docker run --rm -v $(pwd):/contracts ethereum/solc:0.8.18-alpine - /contracts/multibridgerouter/MultiBridgeRouter.sol -o /contracts --abi --bin --overwrite --optimize
+mv -f MultiBridgeRouter.abi abi/multibridgerouter.abi
+mv -f MultiBridgeRouter.bin bin/multibridgerouter.bin
+rm -f IBridgeAsset.abi
+rm -f IBridgeAsset.bin

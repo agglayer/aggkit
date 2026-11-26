@@ -19,7 +19,7 @@ type reorgScanFixture struct {
 	svc     *fakeActivityBridgeService
 	source  *ActivitySource
 	bridges map[int64]*bridgeservicetypes.BridgeResponse
-	known   map[string]domain.KnownBridge
+	known   map[domain.BridgeKey]domain.KnownBridge
 }
 
 func newReorgScanFixture(t *testing.T, pageSize uint32) *reorgScanFixture {
@@ -38,17 +38,22 @@ func newReorgScanFixture(t *testing.T, pageSize uint32) *reorgScanFixture {
 	url := f.svc.start(t)
 	f.source = mustNewActivitySource(t, fakeNetworkLister{networkIDs: []uint32{1}, url: url}, nil, testLogger)
 	f.source.pageSize = pageSize
-	f.known = map[string]domain.KnownBridge{
-		"5": knownBridge(f.bridges[5], domain.ActivitySourceBridgeService, false),
-		"4": knownBridge(f.bridges[4], domain.ActivitySourceBridgeService, false),
-		"3": knownBridge(f.bridges[3], domain.ActivitySourceBridgeService, false),
-		"2": knownBridge(f.bridges[2], domain.ActivitySourceBridgeService, true),
-		"1": knownBridge(f.bridges[1], domain.ActivitySourceBridgeService, true),
+	f.known = map[domain.BridgeKey]domain.KnownBridge{
+		f.key(5): knownBridge(f.bridges[5], domain.ActivitySourceBridgeService, false),
+		f.key(4): knownBridge(f.bridges[4], domain.ActivitySourceBridgeService, false),
+		f.key(3): knownBridge(f.bridges[3], domain.ActivitySourceBridgeService, false),
+		f.key(2): knownBridge(f.bridges[2], domain.ActivitySourceBridgeService, true),
+		f.key(1): knownBridge(f.bridges[1], domain.ActivitySourceBridgeService, true),
 	}
 	return f
 }
 
-func (f *reorgScanFixture) scan(t *testing.T) ([]*domain.ScannedBridge, []string, []domain.ActivityWarning) {
+// key is the domain.BridgeKey of the fixture's bridge with global index gi
+func (f *reorgScanFixture) key(gi int64) domain.BridgeKey {
+	return keyOf(f.bridges[gi])
+}
+
+func (f *reorgScanFixture) scan(t *testing.T) ([]*domain.ScannedBridge, []domain.BridgeKey, []domain.ActivityWarning) {
 	t.Helper()
 	items, invalidated, warnings, err := f.source.BridgesFrom(t.Context(), common.HexToAddress(testFromAddress), f.known)
 	require.NoError(t, err)
@@ -90,7 +95,7 @@ func TestBridgesFrom_RereadsNonFinalHeadAndStopsAtFinal(t *testing.T) {
 // costs exactly one page read: the first bridge listed is known and final
 func TestBridgesFrom_FinalBridgeNeverReread(t *testing.T) {
 	f := newReorgScanFixture(t, 2)
-	for _, key := range []string{"5", "4", "3"} {
+	for _, key := range []domain.BridgeKey{f.key(5), f.key(4), f.key(3)} {
 		k := f.known[key]
 		k.Final = true
 		f.known[key] = k
@@ -108,12 +113,12 @@ func TestBridgesFrom_FinalBridgeNeverReread(t *testing.T) {
 // yet) sits further down the listing: it must still be re-read
 func TestBridgesFrom_KeepsReadingPastFinalWhileANonFinalIsBelow(t *testing.T) {
 	f := newReorgScanFixture(t, 1)
-	k := f.known["2"]
+	k := f.known[f.key(2)]
 	k.Final = false
-	f.known["2"] = k
-	k = f.known["4"]
+	f.known[f.key(2)] = k
+	k = f.known[f.key(4)]
 	k.Final = true
-	f.known["4"] = k
+	f.known[f.key(4)] = k
 
 	items, invalidated, _ := f.scan(t)
 	require.Empty(t, invalidated)
@@ -130,7 +135,7 @@ func TestBridgesFrom_BridgeRemoved(t *testing.T) {
 
 	items, invalidated, warnings := f.scan(t)
 	require.Empty(t, warnings)
-	require.Equal(t, []string{"4"}, invalidated)
+	require.Equal(t, []domain.BridgeKey{f.key(4)}, invalidated)
 	require.ElementsMatch(t, []int64{5, 3}, keysOf(byGlobalIndex(items)))
 }
 
@@ -141,7 +146,7 @@ func TestBridgesFrom_NewestBridgeRemoved(t *testing.T) {
 	f.svc.setBridges(1, f.bridges[4], f.bridges[3], f.bridges[2], f.bridges[1])
 
 	_, invalidated, _ := f.scan(t)
-	require.Equal(t, []string{"5"}, invalidated)
+	require.Equal(t, []domain.BridgeKey{f.key(5)}, invalidated)
 }
 
 // TestBridgesFrom_BridgeReincludedInAnotherBlock verifies a non-final bridge re-included at a
@@ -185,7 +190,7 @@ func TestBridgesFrom_BridgeReplacedBySameDepositCount(t *testing.T) {
 		f.svc.setBridges(1, other, f.bridges[4], f.bridges[3], f.bridges[2], f.bridges[1])
 
 		_, invalidated, _ := f.scan(t)
-		require.Equal(t, []string{"5"}, invalidated)
+		require.Equal(t, []domain.BridgeKey{f.key(5)}, invalidated)
 	})
 }
 
@@ -317,7 +322,7 @@ func TestBridgesFrom_ListingShiftedInBothPassesKeepsTheCache(t *testing.T) {
 	// stable listing (3, 2, 1): global indexes 5 and 4 are now proven gone
 	items, invalidated, warnings = f.scan(t)
 	require.Empty(t, warnings)
-	require.Equal(t, []string{"4", "5"}, invalidated)
+	require.Equal(t, []domain.BridgeKey{f.key(4), f.key(5)}, invalidated)
 	require.ElementsMatch(t, []int64{3}, keysOf(byGlobalIndex(items)))
 }
 
@@ -327,9 +332,9 @@ func TestBridgesFrom_ListingShiftedInBothPassesKeepsTheCache(t *testing.T) {
 func TestBridgesFrom_RPCOnlyEntryRemovedOnceIndexedPast(t *testing.T) {
 	f := newReorgScanFixture(t, 10)
 	rpcOnly := bridgeResponse(1, 2, 3, testFromAddress, 9) // deposit count 3, between 4 and 5
-	f.known = map[string]domain.KnownBridge{
-		"9": knownBridge(rpcOnly, domain.ActivitySourceRPC, false),
-		"2": knownBridge(f.bridges[2], domain.ActivitySourceBridgeService, true),
+	f.known = map[domain.BridgeKey]domain.KnownBridge{
+		keyOf(rpcOnly): knownBridge(rpcOnly, domain.ActivitySourceRPC, false),
+		f.key(2):       knownBridge(f.bridges[2], domain.ActivitySourceBridgeService, true),
 	}
 	f.svc.setBridges(1, f.bridges[3], f.bridges[2], f.bridges[1]) // indexed up to deposit count 2
 
@@ -338,7 +343,7 @@ func TestBridgesFrom_RPCOnlyEntryRemovedOnceIndexedPast(t *testing.T) {
 
 	f.svc.setBridges(1, f.bridges[5], f.bridges[3], f.bridges[2], f.bridges[1]) // deposit count 4 listed
 	_, invalidated, _ = f.scan(t)
-	require.Equal(t, []string{"9"}, invalidated)
+	require.Equal(t, []domain.BridgeKey{keyOf(rpcOnly)}, invalidated)
 }
 
 // TestBridgesFrom_ReorgMetrics verifies the activity reorg counters

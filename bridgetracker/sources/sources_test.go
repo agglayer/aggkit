@@ -14,6 +14,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/bridgeservicefinder"
 	"github.com/agglayer/aggkit/bridgetracker"
+	"github.com/agglayer/aggkit/bridgetracker/domain"
 	trackertypes "github.com/agglayer/aggkit/bridgetracker/types"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
@@ -92,6 +93,7 @@ func bridgeEventLog(t *testing.T, destinationNetwork, depositCount uint32) *geth
 		Data:        data,
 		BlockNumber: 12345,
 		BlockHash:   testBlockHash,
+		TxHash:      testTxHash,
 		Index:       3,
 	}
 }
@@ -151,10 +153,11 @@ func TestBridgeEventSourceFindBridge(t *testing.T) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        []*gethtypes.Log{bridgeEventLog(t, 1, 7)},
 	}, nil)
 	expectFinalized(client, 12345)
-	expectBlockTimestamp(client)
+	expectBridgeBlockHeader(client)
 
 	source := newBridgeEventSource(t, client)
 	info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
@@ -254,10 +257,11 @@ func TestBridgeEventSourceOverrideAcceptsCanonicalEmitter(t *testing.T) {
 	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 		Status:      gethtypes.ReceiptStatusSuccessful,
 		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
 		Logs:        []*gethtypes.Log{realLog},
 	}, nil)
 	expectFinalized(client, 12345)
-	expectBlockTimestamp(client)
+	expectBridgeBlockHeader(client)
 
 	source, err := NewBridgeEventSource(
 		StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock,
@@ -354,10 +358,11 @@ func TestBridgeEventSourceMatchesCanonicalAmongMultipleLogs(t *testing.T) {
 			client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
 				Status:      gethtypes.ReceiptStatusSuccessful,
 				BlockNumber: big.NewInt(12345),
+				BlockHash:   testBlockHash,
 				Logs:        logs,
 			}, nil)
 			expectFinalized(client, 12345)
-			expectBlockTimestamp(client)
+			expectBridgeBlockHeader(client)
 
 			source, err := NewBridgeEventSource(
 				StaticClients{0: client}, aggkittypes.FinalizedBlock, aggkittypes.FinalizedBlock, nil,
@@ -368,6 +373,158 @@ func TestBridgeEventSourceMatchesCanonicalAmongMultipleLogs(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, uint32(2), info.DestinationNetwork)
 			require.Equal(t, uint32(9), info.DepositCount)
+		})
+	}
+}
+
+// multiBridgeReceiptLogs returns the logs of a tx performing two canonical bridge calls (e.g.
+// through a router): log 3 bridges deposit 7 to network 2, log 9 deposit 8 to network 99. With
+// reversed, the receipt lists them in the opposite order
+func multiBridgeReceiptLogs(t *testing.T, reversed bool) []*gethtypes.Log {
+	t.Helper()
+	first := bridgeEventLog(t, 2, 7)
+	first.Index = 3
+	second := bridgeEventLog(t, 99, 8)
+	second.Index = 9
+	if reversed {
+		return []*gethtypes.Log{second, first}
+	}
+	return []*gethtypes.Log{first, second}
+}
+
+// expectMultiBridgeReceipt stubs client to return a final receipt carrying logs, mined in the
+// block the logs report (bridgeEventLog's testBlockHash at 12345)
+func expectMultiBridgeReceipt(client *mocks.BaseEthereumClienter, logs []*gethtypes.Log) {
+	client.EXPECT().TransactionReceipt(mock.Anything, testTxHash).Return(&gethtypes.Receipt{
+		Status:      gethtypes.ReceiptStatusSuccessful,
+		BlockNumber: big.NewInt(12345),
+		BlockHash:   testBlockHash,
+		Logs:        logs,
+	}, nil)
+	expectFinalized(client, 12345)
+}
+
+// TestBridgeEventSourceSelectsBridgeEventByLogIndex pins per-event tracking: each BridgeEvent
+// of a multi-bridge tx resolves to its own BridgeInfo when selected by log index, whatever the
+// order the receipt lists the logs in
+func TestBridgeEventSourceSelectsBridgeEventByLogIndex(t *testing.T) {
+	testCases := []struct {
+		logIndex        uint32
+		wantDestination uint32
+		wantDeposit     uint32
+	}{
+		{logIndex: 3, wantDestination: 2, wantDeposit: 7},
+		{logIndex: 9, wantDestination: 99, wantDeposit: 8},
+	}
+	for _, reversed := range []bool{false, true} {
+		for _, tc := range testCases {
+			t.Run(fmt.Sprintf("log=%d/reversed=%t", tc.logIndex, reversed), func(t *testing.T) {
+				client := mocks.NewBaseEthereumClienter(t)
+				expectMultiBridgeReceipt(client, multiBridgeReceiptLogs(t, reversed))
+				expectBridgeBlockHeader(client)
+
+				source := newBridgeEventSource(t, client)
+				info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{
+					NetworkID: 0, TxHash: testTxHash, Log: domain.LogIndex(tc.logIndex),
+				})
+				require.NoError(t, err)
+				require.Equal(t, tc.logIndex, info.LogIndex)
+				require.Equal(t, tc.wantDestination, info.DestinationNetwork)
+				require.Equal(t, tc.wantDeposit, info.DepositCount)
+			})
+		}
+	}
+}
+
+// TestBridgeEventSourceTxOnlyMultiBridgeIsAmbiguous pins that a tx-only request on a tx with
+// several canonical BridgeEvents fails, permanently, listing the candidate log indexes, instead
+// of silently resolving to the first one
+func TestBridgeEventSourceTxOnlyMultiBridgeIsAmbiguous(t *testing.T) {
+	for _, reversed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reversed=%t", reversed), func(t *testing.T) {
+			client := mocks.NewBaseEthereumClienter(t)
+			expectMultiBridgeReceipt(client, multiBridgeReceiptLogs(t, reversed))
+
+			source := newBridgeEventSource(t, client)
+			info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{NetworkID: 0, TxHash: testTxHash})
+			require.Nil(t, info)
+			require.ErrorIs(t, err, bridgetracker.ErrAmbiguousBridgeTx)
+			require.True(t, domain.IsPermanent(err))
+			require.Contains(t, err.Error(), "log_index [3 9]")
+		})
+	}
+}
+
+// TestBridgeEventSourceSelectedLogWithoutBridgeEvent pins that a log index holding no canonical
+// BridgeEvent fails permanently, listing the ones that do — also when an impostor contract
+// emitted a BridgeEvent-shaped log at exactly that index
+func TestBridgeEventSourceSelectedLogWithoutBridgeEvent(t *testing.T) {
+	testCases := []struct {
+		name     string
+		logIndex uint32
+	}{
+		{name: "no log at that index", logIndex: 5},
+		{name: "impostor emitter at that index", logIndex: 4},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			impostor := bridgeEventLog(t, 1, 7)
+			impostor.Index = 4
+			impostor.Address = common.HexToAddress("0xBAD")
+			client := mocks.NewBaseEthereumClienter(t)
+			expectMultiBridgeReceipt(client, append(multiBridgeReceiptLogs(t, false), impostor))
+
+			source := newBridgeEventSource(t, client)
+			info, err := source.FindBridge(t.Context(), bridgetracker.TrackingID{
+				NetworkID: 0, TxHash: testTxHash, Log: domain.LogIndex(tc.logIndex),
+			})
+			require.Nil(t, info)
+			require.ErrorIs(t, err, bridgetracker.ErrBridgeLogNotFound)
+			require.True(t, domain.IsPermanent(err))
+			require.Contains(t, err.Error(), "log_index [3 9]")
+		})
+	}
+}
+
+// TestBridgeEventSourceSingleBridgeTxOnlyOrSelected pins backwards compatibility: a tx with a
+// single canonical BridgeEvent resolves to it both tx-only (as before) and
+// when selected by its own log index
+func TestBridgeEventSourceSingleBridgeTxOnlyOrSelected(t *testing.T) {
+	for _, id := range []bridgetracker.TrackingID{
+		{NetworkID: 0, TxHash: testTxHash},
+		{NetworkID: 0, TxHash: testTxHash, Log: domain.LogIndex(3)},
+	} {
+		t.Run(id.String(), func(t *testing.T) {
+			client := mocks.NewBaseEthereumClienter(t)
+			expectMultiBridgeReceipt(client, []*gethtypes.Log{bridgeEventLog(t, 1, 7)})
+			expectBridgeBlockHeader(client)
+
+			info, err := newBridgeEventSource(t, client).FindBridge(t.Context(), id)
+			require.NoError(t, err)
+			require.Equal(t, l1ToL2Bridge(), info)
+		})
+	}
+}
+
+// TestBridgeEventSourceChecksEveryCandidateBridgeEvent pins that every canonical BridgeEvent of
+// the receipt must belong to the receipt's block, not only the selected one: the others decide
+// the ambiguity and the log indexes listed, so an incoherent one fails the whole answer as
+// ErrInvalidUpstreamData (transient) instead of resolving the selected bridge
+func TestBridgeEventSourceChecksEveryCandidateBridgeEvent(t *testing.T) {
+	for _, id := range []bridgetracker.TrackingID{
+		{NetworkID: 0, TxHash: testTxHash},
+		{NetworkID: 0, TxHash: testTxHash, Log: domain.LogIndex(3)},
+	} {
+		t.Run(id.String(), func(t *testing.T) {
+			logs := multiBridgeReceiptLogs(t, false)
+			logs[1].BlockHash = testOtherBlockHash
+			client := mocks.NewBaseEthereumClienter(t)
+			expectMultiBridgeReceipt(client, logs)
+
+			info, err := newBridgeEventSource(t, client).FindBridge(t.Context(), id)
+			require.Nil(t, info)
+			require.ErrorIs(t, err, bridgetracker.ErrInvalidUpstreamData)
+			require.False(t, domain.IsPermanent(err))
 		})
 	}
 }
@@ -387,6 +544,9 @@ type fakeBridgeService struct {
 	l1InfoTreeIndex *uint32
 	// injectedLeaf is served by /bridge/v1/injected-l1-info-leaf; nil -> not injected (500)
 	injectedLeaf map[string]any
+	// claimsBody, when set, is served verbatim as the /bridge/v1/claims response (it takes
+	// precedence over claimsCount), whatever the global_index requested
+	claimsBody string
 	// claimsCount is served by /bridge/v1/claims
 	claimsCount int
 	// claimTxHash, claimBlockNum and claimBlockTimestamp populate the single claim served when
@@ -445,6 +605,10 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 	})
 	mux.HandleFunc("/bridge/v1/claims", func(w http.ResponseWriter, r *http.Request) {
 		f.lastGlobalIndexQuery = r.URL.Query().Get("global_index")
+		if f.claimsBody != "" {
+			fmt.Fprint(w, f.claimsBody)
+			return
+		}
 		if f.claimsCount == 0 {
 			fmt.Fprint(w, `{"claims":[],"count":0}`)
 			return
@@ -453,8 +617,12 @@ func (f *fakeBridgeService) startAt(t *testing.T, networkID uint32) staticURLs {
 		if f.claimBlockFinalized != nil {
 			finalized = fmt.Sprintf(`,"block_finalized":%t`, *f.claimBlockFinalized)
 		}
-		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d%s}],"count":%d}`,
-			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, finalized, f.claimsCount)
+		// like the real service, the claim carries the global index it was requested by and the
+		// network it was made on
+		fmt.Fprintf(w, `{"claims":[{"tx_hash":"%s","block_num":%d,"block_timestamp":%d,`+
+			`"global_index":"%s","destination_network":%d%s}],"count":%d}`,
+			f.claimTxHash, f.claimBlockNum, f.claimBlockTimestamp, f.lastGlobalIndexQuery, networkID, finalized,
+			f.claimsCount)
 	})
 
 	server := httptest.NewServer(mux)

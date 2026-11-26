@@ -427,6 +427,62 @@ func TestEngineOriginReorgedOut(t *testing.T) {
 	require.Equal(t, types.TrackerClaimStatusReadyToClaim, tracking.ClaimStatus())
 }
 
+// TestEngineOriginReorgedOutNeverReincluded pins what the tracker reports for a tracked tx that a
+// reorg removes for good: the tracking goes back to registered with a fresh UnresolvedTimeout
+// (counted from the reorg, not from when the tx was first tracked) and, once that elapses without
+// the tx being mined again, ends in the terminal error of a tx that does not exist, with nothing
+// left of the bridge that had been resolved
+func TestEngineOriginReorgedOutNeverReincluded(t *testing.T) {
+	id := TrackingID{NetworkID: 0, TxHash: testHash}
+	f := &fakeSources{bridge: l1ToL2ReorgBridge()}
+	facts := &reorgFacts{}
+	store := newMemoryRegistry(0)
+	engine, clock := newReorgTestEngine(t, store, f, facts)
+	updates, unsubscribe, err := store.Subscribe(id)
+	require.NoError(t, err)
+	defer unsubscribe()
+
+	driveToReadyToClaim(f)
+	engine.tick(t.Context())
+	tracking := receiveUpdate(t, updates)
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, tracking.ClaimStatus())
+
+	// tracked for longer than UnresolvedTimeout before the reorg: the timeout of the first
+	// resolution must not count against the tx once it is reorged out
+	*clock = clock.Add(3 * engine.cfg.UnresolvedTimeout)
+	facts.set(func(r *reorgFacts) { r.canonical = common.HexToHash("0xa2") })
+	f.bridge, f.bridgeErr = nil, ErrBridgeTxNotFound
+	engine.tick(t.Context())
+	tracking = receiveUpdate(t, updates)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus(), "a fresh UnresolvedTimeout starts at the reorg")
+	require.Equal(t, types.TrackerClaimStatusPending, tracking.ClaimStatus())
+	require.Nil(t, tracking.Info())
+	require.Nil(t, tracking.AllSteps())
+	require.False(t, tracking.Failed())
+	require.Len(t, mustGetTrackerActives(t, store), 1)
+
+	// still missing just before the timeout: still looked for
+	*clock = clock.Add(engine.cfg.UnresolvedTimeout - time.Second)
+	engine.tick(t.Context())
+	tracking = mustGetFrom(t, store, id)
+	require.Equal(t, types.TrackingStatusRegistered, tracking.TrackingStatus())
+	require.False(t, tracking.Failed())
+
+	// never re-included: given up on, like any tx that does not exist on the network
+	*clock = clock.Add(time.Second)
+	engine.tick(t.Context())
+	tracking = mustGetFrom(t, store, id)
+	require.Equal(t, types.TrackingStatusError, tracking.TrackingStatus())
+	require.Equal(t, types.TrackerClaimStatusError, tracking.ClaimStatus())
+	require.Nil(t, tracking.Info(), "the bridge resolved before the reorg must not come back")
+	require.Nil(t, tracking.StepIndex())
+	require.Nil(t, tracking.AllSteps())
+	require.True(t, tracking.Failed())
+	require.NotNil(t, tracking.Error())
+	require.Equal(t, types.StepErrorExhausted, tracking.Error().ErrorType)
+	require.Empty(t, mustGetTrackerActives(t, store), "a tx given up on leaves the active list")
+}
+
 // TestEngineOriginReincludedInAnotherBlockSameTick pins the common case: the reorged-out bridge
 // tx is already re-mined when the reorg is seen, so it moves to its new block in the same tick
 func TestEngineOriginReincludedInAnotherBlockSameTick(t *testing.T) {
@@ -475,4 +531,44 @@ func TestEngineOriginBlockFinalized(t *testing.T) {
 	tracking := mustGetFrom(t, store, id)
 	require.NotNil(t, tracking.Info())
 	require.Equal(t, uint64(500), tracking.Info().BlockNumber)
+}
+
+// TestEngineOriginReorgedOutKeepsLogSelector pins that the reorg paths work per bridge event:
+// a tracking selecting one BridgeEvent of its tx is reset when its origin
+// is reorged out and re-resolved under the very same selector, never falling back to the tx-only
+// identity (which would fail as ambiguous on a multi-bridge tx)
+func TestEngineOriginReorgedOutKeepsLogSelector(t *testing.T) {
+	id := TrackingID{NetworkID: 0, TxHash: testHash, Log: domain.LogIndex(1)}
+	f := &fakeSources{bridge: l1ToL2ReorgBridge()}
+	facts := &reorgFacts{}
+	store := newMemoryRegistry(0)
+	engine, _ := newReorgTestEngine(t, store, f, facts)
+	mustRegister(t, store, id)
+	driveToReadyToClaim(f)
+	engine.tick(t.Context())
+	require.Equal(t, types.TrackerClaimStatusReadyToClaim, mustGetFrom(t, store, id).ClaimStatus())
+
+	// the origin block is replaced and the tx is not mined again (yet): reset, same id
+	newHash := common.HexToHash("0xa5")
+	facts.set(func(r *reorgFacts) { r.canonical = newHash })
+	f.bridge, f.bridgeErr = nil, ErrBridgeTxNotFound
+	engine.tick(t.Context())
+	tracking := mustGetFrom(t, store, id)
+	require.Equal(t, id, tracking.ID())
+	require.Nil(t, tracking.Info())
+
+	moved := l1ToL2ReorgBridge()
+	moved.BlockNumber, moved.BlockHash = 503, newHash
+	f.bridge, f.bridgeErr = moved, nil
+	engine.tick(t.Context())
+	tracking = mustGetFrom(t, store, id)
+	require.Equal(t, uint64(503), tracking.Info().BlockNumber)
+	require.Equal(t, 1, store.GetNumTracker(), "no tx-only entry was created along the way")
+
+	f.findBridgeMu.Lock()
+	defer f.findBridgeMu.Unlock()
+	require.NotEmpty(t, f.findBridgeIDs)
+	for _, asked := range f.findBridgeIDs {
+		require.Equal(t, id, asked, "every (re-)resolution asks for the selected event")
+	}
 }
