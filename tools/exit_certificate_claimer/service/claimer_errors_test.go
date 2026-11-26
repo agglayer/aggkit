@@ -52,7 +52,7 @@ func TestBuildClaimParamsGetLocalExitRootError(t *testing.T) {
 	boom := errors.New("boom")
 	l1 := &cfgL1{leaf: &l1infotreesync.L1InfoTreeLeaf{}, localRootErr: boom}
 	c, dest := cfgClaimer(t, l1, &fakeLocalTree{})
-	_, err := c.BuildClaimParams(context.Background(), dest, nil)
+	_, err := c.BuildClaimParamsV2(context.Background(), dest, nil)
 	require.ErrorIs(t, err, boom)
 }
 
@@ -64,7 +64,7 @@ func TestBuildClaimParamsRollupProofError(t *testing.T) {
 	// localRoot must match the certificate so the settlement check passes, then rollup proof errors.
 	l1 := &cfgL1{leaf: &l1infotreesync.L1InfoTreeLeaf{}, localRoot: cert.NewLocalExitRoot, rollupProofErr: boom}
 	c, dest := cfgClaimer(t, l1, &fakeLocalTree{})
-	_, err = c.BuildClaimParams(context.Background(), dest, nil)
+	_, err = c.BuildClaimParamsV2(context.Background(), dest, nil)
 	require.ErrorIs(t, err, boom)
 }
 
@@ -75,7 +75,7 @@ func TestBuildClaimParamsTreeShorterThanCertificate(t *testing.T) {
 	l1 := &cfgL1{leaf: &l1infotreesync.L1InfoTreeLeaf{}, localRoot: cert.NewLocalExitRoot}
 	// Empty local tree → the certificate's exits cannot be its last leaves.
 	c, dest := cfgClaimer(t, l1, &fakeLocalTree{})
-	_, err = c.BuildClaimParams(context.Background(), dest, nil)
+	_, err = c.BuildClaimParamsV2(context.Background(), dest, nil)
 	require.ErrorContains(t, err, "the local exit tree has only 0 leaves")
 }
 
@@ -88,7 +88,7 @@ func TestBuildClaimParamsLeafMismatch(t *testing.T) {
 	tree := fakeTreeForCert(cert)
 	tree.hashes[testHistoricalLeaves] = common.HexToHash("0xbad")
 	c, dest := cfgClaimer(t, l1, tree)
-	_, err = c.BuildClaimParams(context.Background(), dest, nil)
+	_, err = c.BuildClaimParamsV2(context.Background(), dest, nil)
 	require.ErrorContains(t, err, "does not match the local exit tree leaf at deposit count 5")
 	require.ErrorContains(t, c.Check(context.Background()), "does not match the local exit tree leaf")
 }
@@ -102,7 +102,7 @@ func TestBuildClaimParamsMetadataMissing(t *testing.T) {
 	tree := fakeTreeForCert(cert)
 	tree.metadata = nil
 	c, dest := cfgClaimer(t, l1, tree)
-	_, err = c.BuildClaimParams(context.Background(), dest, nil)
+	_, err = c.BuildClaimParamsV2(context.Background(), dest, nil)
 	require.ErrorContains(t, err, "no metadata in local exit tree")
 }
 
@@ -115,6 +115,6 @@ func TestBuildClaimParamsProofError(t *testing.T) {
 	tree := fakeTreeForCert(cert)
 	tree.proofErr = boom
 	c, dest := cfgClaimer(t, l1, tree)
-	_, err = c.BuildClaimParams(context.Background(), dest, nil)
+	_, err = c.BuildClaimParamsV2(context.Background(), dest, nil)
 	require.ErrorIs(t, err, boom)
 }

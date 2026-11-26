@@ -1,0 +1,6 @@
+{
+  "error": "claimer API v1 has been removed, use /claimer/v2",
+  "api_versions": [
+    2
+  ]
+}

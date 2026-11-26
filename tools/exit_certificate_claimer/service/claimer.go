@@ -104,10 +104,6 @@ type exitSelection struct {
 	address common.Address
 	// depositCount, when set, keeps only the exit with that deposit count.
 	depositCount *uint32
-	// withMessages is false for API v1: only Transfer exits, matched by destination address. With it
-	// (API v2) Message exits are returned too, matched by destination address or by the beneficiary
-	// decoded through a configured message route.
-	withMessages bool
 }
 
 // selectedExit is a bridge exit (of the certificate or pending) matched by a request.
@@ -119,9 +115,6 @@ type selectedExit struct {
 	destinationAddress common.Address
 	amount             *big.Int
 	depositCount       uint32
-	// viewMetadata is the metadata /bridges shows in API v1: the certificate's metadata hash for a
-	// certificate exit, the raw bridge metadata for a pending one. API v2 always shows rawMetadata.
-	viewMetadata []byte
 	// rawMetadata is the raw bridge metadata, the one a claim needs.
 	rawMetadata []byte
 	// pending is non-nil for a pre-certificate pending bridge.
@@ -144,12 +137,12 @@ func (c *Claimer) certificateFirstDepositCount() (uint32, error) {
 }
 
 // matches reports whether an exit belongs to the selection's address: it is its destination address
-// or, with messages, the beneficiary of the decoded message.
+// or the beneficiary of the decoded message.
 func (sel *exitSelection) matches(destinationAddress common.Address, decoded *decodedMessage) bool {
 	if destinationAddress == sel.address {
 		return true
 	}
-	return sel.withMessages && decoded != nil && decoded.beneficiary == sel.address
+	return decoded != nil && decoded.beneficiary == sel.address
 }
 
 // selectExits returns the certificate's exits matching the selection, in certificate order, followed
@@ -172,12 +165,8 @@ func (c *Claimer) selectExits(sel exitSelection) ([]selectedExit, error) {
 		if sel.depositCount != nil && *sel.depositCount != depositCount {
 			continue
 		}
-		if !sel.withMessages && leaf.LeafType != leafTypeAsset {
-			continue
-		}
-		// Only a message that is not addressed to the requested address needs its metadata decoded.
 		var decoded *decodedMessage
-		if sel.withMessages && leaf.LeafType == leafTypeMessage {
+		if leaf.LeafType == leafTypeMessage {
 			if rawMetadata, ok := c.localTree.Metadata(depositCount); ok {
 				decoded, _ = c.routes.decode(leaf.LeafType, leaf.OriginNetwork, leaf.OriginTokenAddress,
 					leaf.DestinationNetwork, leaf.DestinationAddress, rawMetadata)
@@ -212,7 +201,6 @@ func (c *Claimer) selectExits(sel exitSelection) ([]selectedExit, error) {
 			destinationAddress: leaf.DestinationAddress,
 			amount:             leaf.Amount,
 			depositCount:       depositCount,
-			viewMetadata:       leaf.MetadataHash,
 			rawMetadata:        rawMetadata,
 			decoded:            decoded,
 		})
@@ -227,14 +215,8 @@ func (c *Claimer) selectExits(sel exitSelection) ([]selectedExit, error) {
 		if sel.depositCount != nil && *sel.depositCount != p.DepositCount {
 			continue
 		}
-		if !sel.withMessages && p.LeafType != leafTypeAsset {
-			continue
-		}
-		var decoded *decodedMessage
-		if sel.withMessages {
-			decoded, _ = c.routes.decode(p.LeafType, p.OriginNetwork, p.OriginAddress,
-				p.DestinationNetwork, p.DestinationAddress, p.Metadata)
-		}
+		decoded, _ := c.routes.decode(p.LeafType, p.OriginNetwork, p.OriginAddress,
+			p.DestinationNetwork, p.DestinationAddress, p.Metadata)
 		if !sel.matches(p.DestinationAddress, decoded) {
 			continue
 		}
@@ -246,7 +228,6 @@ func (c *Claimer) selectExits(sel exitSelection) ([]selectedExit, error) {
 			destinationAddress: p.DestinationAddress,
 			amount:             p.Amount,
 			depositCount:       p.DepositCount,
-			viewMetadata:       p.Metadata,
 			rawMetadata:        p.Metadata,
 			pending:            p,
 			decoded:            decoded,
@@ -255,29 +236,23 @@ func (c *Claimer) selectExits(sel exitSelection) ([]selectedExit, error) {
 	return selected, nil
 }
 
-// view renders the exit for /bridges (API v1 form).
-func (e *selectedExit) view() BridgeExitView {
-	return BridgeExitView{
-		LeafType:           e.leafType,
-		OriginNetwork:      e.originNetwork,
-		OriginTokenAddress: addrHex(e.originAddress),
-		DestinationNetwork: e.destinationNetwork,
-		DestinationAddress: addrHex(e.destinationAddress),
-		Amount:             bigToString(e.amount),
-		Metadata:           metadataHex(e.viewMetadata),
-		DepositCount:       e.depositCount,
-	}
-}
-
-// viewV2 renders the exit for /bridges (API v2 form): metadata is always the raw bridge metadata, with
-// its hash next to it.
+// viewV2 renders the exit for /bridges (API v2): metadata is the raw bridge metadata, with its hash
+// next to it.
 func (e *selectedExit) viewV2() BridgeExitViewV2 {
 	v := BridgeExitViewV2{
-		BridgeExitView: e.view(),
-		MetadataHash:   metadataHashHex(e.rawMetadata),
-		ClaimMethod:    claimMethod(e.leafType),
+		BridgeExitView: BridgeExitView{
+			LeafType:           e.leafType,
+			OriginNetwork:      e.originNetwork,
+			OriginTokenAddress: addrHex(e.originAddress),
+			DestinationNetwork: e.destinationNetwork,
+			DestinationAddress: addrHex(e.destinationAddress),
+			Amount:             bigToString(e.amount),
+			Metadata:           metadataHex(e.rawMetadata),
+			DepositCount:       e.depositCount,
+		},
+		MetadataHash: metadataHashHex(e.rawMetadata),
+		ClaimMethod:  claimMethod(e.leafType),
 	}
-	v.Metadata = metadataHex(e.rawMetadata)
 	if e.decoded != nil {
 		token := e.decoded.token
 		v.Beneficiary = addrHex(e.decoded.beneficiary)
@@ -287,26 +262,11 @@ func (e *selectedExit) viewV2() BridgeExitViewV2 {
 	return v
 }
 
-// ListBridges returns, for API v1, the certificate's Transfer exits destined to destAddr, enriched
-// with their deposit count, followed by the pre-certificate pending Transfer bridges. Message exits
-// are never returned: a v1 client cannot claim them.
-func (c *Claimer) ListBridges(destAddr common.Address) ([]BridgeExitView, error) {
-	exits, err := c.selectExits(exitSelection{address: destAddr})
-	if err != nil {
-		return nil, err
-	}
-	views := make([]BridgeExitView, 0, len(exits))
-	for i := range exits {
-		views = append(views, exits[i].view())
-	}
-	return views, nil
-}
-
 // ListBridgesV2 returns, for API v2, the exits of address: the Transfer and Message exits destined to
 // it, and the Message exits whose beneficiary (decoded through a configured message route) it is.
 // Certificate exits come first, then the pre-certificate pending bridges.
 func (c *Claimer) ListBridgesV2(address common.Address) ([]BridgeExitViewV2, error) {
-	exits, err := c.selectExits(exitSelection{address: address, withMessages: true})
+	exits, err := c.selectExits(exitSelection{address: address})
 	if err != nil {
 		return nil, err
 	}
@@ -317,28 +277,12 @@ func (c *Claimer) ListBridgesV2(address common.Address) ([]BridgeExitViewV2, err
 	return views, nil
 }
 
-// BuildClaimParams returns, for API v1, the set of claimAsset arguments for the Transfer exits
-// destined to destAddr (see buildClaims). Message exits are never returned.
-func (c *Claimer) BuildClaimParams(
-	ctx context.Context, destAddr common.Address, depositCount *uint32,
-) ([]ClaimAssetParams, error) {
-	claims, err := c.buildClaims(ctx, exitSelection{address: destAddr, depositCount: depositCount})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]ClaimAssetParams, 0, len(claims))
-	for i := range claims {
-		out = append(out, claims[i].ClaimAssetParams)
-	}
-	return out, nil
-}
-
 // BuildClaimParamsV2 returns, for API v2, the claim arguments of the exits of address (same selection
 // as ListBridgesV2), each with the AgglayerBridge method to call: claimAsset or claimMessage.
 func (c *Claimer) BuildClaimParamsV2(
 	ctx context.Context, address common.Address, depositCount *uint32,
 ) ([]ClaimParamsV2, error) {
-	return c.buildClaims(ctx, exitSelection{address: address, depositCount: depositCount, withMessages: true})
+	return c.buildClaims(ctx, exitSelection{address: address, depositCount: depositCount})
 }
 
 // buildClaims returns the claim arguments of the selected exits. The proofs are anchored to the L1
@@ -441,7 +385,7 @@ func (c *Claimer) anchorClaim(
 
 // settlementLeaf returns the L1 info tree leaf the certificate settled at — the leaf carrying the
 // Global Exit Root recorded by the WAIT step (keccak256(mainnetExitRoot, rollupExitRoot)). Claim
-// proofs must be anchored to this leaf rather than the latest one (see BuildClaimParams).
+// proofs must be anchored to this leaf rather than the latest one (see buildClaims).
 func (c *Claimer) settlementLeaf() (*l1infotreesync.L1InfoTreeLeaf, error) {
 	if c.waitResult == nil {
 		return nil, errors.New("wait result is nil; cannot locate the settlement L1 info tree leaf")

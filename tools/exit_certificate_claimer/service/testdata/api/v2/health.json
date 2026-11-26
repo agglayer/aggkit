@@ -12,7 +12,6 @@
     "arch": "amd64"
   },
   "api_versions": [
-    1,
     2
   ]
 }

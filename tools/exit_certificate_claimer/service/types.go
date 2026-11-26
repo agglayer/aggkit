@@ -67,12 +67,12 @@ func claimMethod(leafType uint8) string {
 	return ClaimMethodAsset
 }
 
-// BridgeExitViewV2 is a bridge exit as returned by API v2: the v1 fields plus the metadata hash, the
+// BridgeExitViewV2 is a bridge exit as returned by API v2: the exit fields plus the metadata hash, the
 // claim method and, for a Message exit decoded through a configured message route, its beneficiary,
 // the amount it is paid and the token it is paid in.
 //
-// Unlike in v1, Metadata is always the raw bridge metadata (for certificate exits and pending bridges
-// alike) and MetadataHash is always its keccak256 hash.
+// Metadata is the raw bridge metadata (for certificate exits and pending bridges alike) and MetadataHash
+// is its keccak256 hash.
 type BridgeExitViewV2 struct {
 	BridgeExitView
 	MetadataHash  string        `json:"metadata_hash"`
@@ -82,7 +82,7 @@ type BridgeExitViewV2 struct {
 	DisplayToken  *DisplayToken `json:"display_token,omitempty"`
 }
 
-// ClaimParamsV2 holds the claim arguments of one exit as returned by API v2: the v1 fields (claimAsset
+// ClaimParamsV2 holds the claim arguments of one exit as returned by API v2: the claim arguments (claimAsset
 // and claimMessage take the same 11 arguments, in the same order) plus the keccak256 hash of the
 // metadata and the method to call.
 type ClaimParamsV2 struct {
@@ -122,20 +122,6 @@ type errorResponseV2 struct {
 	Error      string `json:"error"`
 }
 
-// BridgesResponse is the body returned by GET /bridges.
-type BridgesResponse struct {
-	NetworkID          uint32           `json:"network_id"`
-	DestinationAddress string           `json:"destination_address"`
-	Bridges            []BridgeExitView `json:"bridges"`
-}
-
-// ClaimParamsResponse is the body returned by GET /claim-params.
-type ClaimParamsResponse struct {
-	NetworkID          uint32             `json:"network_id"`
-	DestinationAddress string             `json:"destination_address"`
-	Claims             []ClaimAssetParams `json:"claims"`
-}
-
 // VersionInfo mirrors aggkit.FullVersion as a JSON-friendly payload.
 type VersionInfo struct {
 	Version   string `json:"version"`
@@ -147,18 +133,20 @@ type VersionInfo struct {
 	Arch      string `json:"arch"`
 }
 
-// HealthResponse is the body returned by GET /health.
+// HealthResponse is the body returned by GET /claimer/v1/health, kept so existing probes keep working
+// after API v1 was removed.
 type HealthResponse struct {
 	Status    string      `json:"status"`
 	NetworkID uint32      `json:"network_id"`
 	Version   VersionInfo `json:"version"`
-	// APIVersions lists the API major versions this claimer serves (/claimer/v<N>/).
+	// APIVersions lists the API major versions this claimer serves (/claimer/v<N>/): only 2.
 	APIVersions []int `json:"api_versions"`
 }
 
-// errorResponse is the JSON body returned on error.
-type errorResponse struct {
-	Error string `json:"error"`
+// apiRemovedResponse is the 410 Gone body of every removed /claimer/v1 endpoint.
+type apiRemovedResponse struct {
+	Error       string `json:"error"`
+	APIVersions []int  `json:"api_versions"`
 }
 
 // proofToHex converts a tree.Proof (32 sibling hashes) into its hex-string representation.

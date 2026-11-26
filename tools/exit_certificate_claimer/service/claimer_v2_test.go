@@ -119,44 +119,6 @@ func TestListBridgesV2UndecodableMetadata(t *testing.T) {
 	require.Empty(t, bridges[2].Beneficiary)
 }
 
-// API v1 never returns a Message exit, neither by beneficiary nor by destination address.
-func TestV1NeverReturnsMessages(t *testing.T) {
-	t.Parallel()
-	f := newCircleFixture(t)
-	ctx := context.Background()
-
-	bridges, err := f.claimer.ListBridges(f.holder)
-	require.NoError(t, err)
-	require.Len(t, bridges, 2)
-	require.Equal(t, circleDCTransfer, bridges[0].DepositCount)
-	require.Equal(t, circleDCPendingTransfer, bridges[1].DepositCount)
-	for _, b := range bridges {
-		require.Equal(t, leafTypeAsset, b.LeafType)
-	}
-
-	claims, err := f.claimer.BuildClaimParams(ctx, f.holder, nil)
-	require.NoError(t, err)
-	require.Len(t, claims, 2)
-	for _, c := range claims {
-		require.Equal(t, leafTypeAsset, c.LeafType)
-	}
-
-	for _, addr := range []common.Address{circleL1Escrow, f.unknownDest, f.holder2} {
-		bridges, err := f.claimer.ListBridges(addr)
-		require.NoError(t, err)
-		require.Empty(t, bridges, addr.Hex())
-		claims, err := f.claimer.BuildClaimParams(ctx, addr, nil)
-		require.NoError(t, err)
-		require.Empty(t, claims, addr.Hex())
-	}
-
-	// Not even when asked by deposit count.
-	dc := circleDCMessage
-	claims, err = f.claimer.BuildClaimParams(ctx, circleL1Escrow, &dc)
-	require.NoError(t, err)
-	require.Empty(t, claims)
-}
-
 // The certificate exit that has the same leaf hash as an older leaf gets its own deposit count (its
 // position), not the older leaf's, and its proof verifies at that position.
 func TestDuplicateLeafHashMatchedByPosition(t *testing.T) {
@@ -305,23 +267,12 @@ func TestV2MetadataIsRawWithHash(t *testing.T) {
 	require.Equal(t, "0x", bridges[0].Metadata)
 	require.Equal(t, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", bridges[0].MetadataHash)
 
-	// v1 is unchanged: hash for the certificate exit, raw for the pending one.
-	v1, err := f.claimer.ListBridges(f.holder)
-	require.NoError(t, err)
-	require.Equal(t, circleDCTransfer, v1[0].DepositCount)
-	require.Equal(t, crypto.Keccak256Hash(nil).Hex(), v1[0].Metadata)
-	require.Equal(t, circleDCPendingTransfer, v1[1].DepositCount)
-	require.Equal(t, "0x", v1[1].Metadata)
-
-	// A v1 certificate exit with non-empty metadata shows the hash, v2 the raw bytes.
+	// A certificate exit with non-empty metadata shows the raw bytes and their hash.
 	other := common.HexToAddress("0xB0B0000000000000000000000000000000000002")
-	v1, err = f.claimer.ListBridges(other)
-	require.NoError(t, err)
 	v2, err := f.claimer.ListBridgesV2(other)
 	require.NoError(t, err)
 	rawERC20 := f.leaves[circleDCOtherTransfer].Metadata
 	require.NotEmpty(t, rawERC20)
-	require.Equal(t, crypto.Keccak256Hash(rawERC20).Hex(), v1[0].Metadata)
 	require.Equal(t, metadataHex(rawERC20), v2[0].Metadata)
 	require.Equal(t, crypto.Keccak256Hash(rawERC20).Hex(), v2[0].MetadataHash)
 }

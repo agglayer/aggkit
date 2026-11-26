@@ -117,7 +117,7 @@ func TestListBridges(t *testing.T) {
 	destAddr := cert.Leaves[0].DestinationAddress
 
 	claimer, _ := buildTestClaimer(t, cert.NewLocalExitRoot)
-	bridges, err := claimer.ListBridges(destAddr)
+	bridges, err := claimer.ListBridgesV2(destAddr)
 	require.NoError(t, err)
 	require.Len(t, bridges, 1)
 	require.Equal(t, destAddr.Hex(), bridges[0].DestinationAddress)
@@ -132,7 +132,7 @@ func TestBuildClaimParams(t *testing.T) {
 	destAddr := cert.Leaves[0].DestinationAddress
 
 	claimer, _ := buildTestClaimer(t, cert.NewLocalExitRoot)
-	claims, err := claimer.BuildClaimParams(context.Background(), destAddr, nil)
+	claims, err := claimer.BuildClaimParamsV2(context.Background(), destAddr, nil)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 
@@ -153,6 +153,6 @@ func TestBuildClaimParamsNotSettled(t *testing.T) {
 	t.Parallel()
 
 	claimer, destAddr := buildTestClaimer(t, common.HexToHash("0xdeadbeef"))
-	_, err := claimer.BuildClaimParams(context.Background(), destAddr, nil)
+	_, err := claimer.BuildClaimParamsV2(context.Background(), destAddr, nil)
 	require.ErrorIs(t, err, ErrLocalExitRootNotSettled)
 }

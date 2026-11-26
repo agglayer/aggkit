@@ -43,7 +43,7 @@ type goldenRequest struct {
 	File   string `json:"file"`
 }
 
-// TestAPIGolden pins the HTTP contract of API v1 and v2: every response body is compared, byte for
+// TestAPIGolden pins the HTTP contract of the claimer API (v2, plus what is left of v1): every response body is compared, byte for
 // byte once indented, with a golden file. The files are also the fixtures of the contract tests of
 // API clients (the claims UI), so a diff here is a change of the public API: a breaking one needs a
 // new major version (see SPEC.md, "API versioning").
@@ -78,24 +78,11 @@ func TestAPIGolden(t *testing.T) {
 		status int
 		file   string
 	}{
-		// API v1: unchanged, Transfer exits only.
+		// API v1 is removed: only /health is kept (listing api_versions [2]), the rest is 410 Gone.
 		{"v1 health", srv, "/claimer/v1/health", http.StatusOK, "v1/health.json"},
-		{"v1 bridges of a holder: Transfer exits only", srv, "/claimer/v1/bridges" + q1, http.StatusOK,
-			"v1/bridges.json"},
-		{"v1 bridges of the message destination contract: none", srv,
-			"/claimer/v1/bridges?dest_address=" + circleL1Escrow.Hex(), http.StatusOK, "v1/bridges-empty.json"},
-		{"v1 claim-params of a holder: every Transfer exit", srv, "/claimer/v1/claim-params" + q1, http.StatusOK,
-			"v1/claim-params.json"},
-		{"v1 claim-params of one deposit", srv, "/claimer/v1/claim-params" + q1 + dc(circleDCTransfer),
-			http.StatusOK, "v1/claim-params-deposit.json"},
-		{"v1 missing dest_address", srv, "/claimer/v1/bridges", http.StatusBadRequest,
-			"v1/error-400-missing-dest-address.json"},
-		{"v1 invalid dest_address", srv, "/claimer/v1/bridges?dest_address=0x1234", http.StatusBadRequest,
-			"v1/error-400-invalid-dest-address.json"},
-		{"v1 invalid deposit_count", srv, "/claimer/v1/claim-params" + q1 + "&deposit_count=abc",
-			http.StatusBadRequest, "v1/error-400-invalid-deposit-count.json"},
-		{"v1 certificate not settled", notSettledSrv, "/claimer/v1/claim-params" + q1, http.StatusConflict,
-			"v1/error-409-not-settled.json"},
+		{"v1 bridges: removed", srv, "/claimer/v1/bridges" + q1, http.StatusGone, "v1/error-410-gone.json"},
+		{"v1 claim-params: removed", srv, "/claimer/v1/claim-params" + q1, http.StatusGone,
+			"v1/error-410-gone.json"},
 
 		// API v2: Transfer and Message exits.
 		{"v2 health", srv, "/claimer/v2/health", http.StatusOK, "v2/health.json"},
@@ -167,46 +154,4 @@ func compareGolden(t *testing.T, file string, got []byte) {
 	require.Equal(t, string(want), string(got),
 		"%s differs from the golden response: the API changed. If it is intended and not breaking for the "+
 			"API version, run the test with -update", file)
-}
-
-// The v1 body of an exit must keep exactly the fields a v1 client knows: nothing of v2 leaks into it.
-func TestAPIV1FieldsUnchanged(t *testing.T) {
-	t.Parallel()
-	f := newCircleFixture(t)
-	cfg := &Config{Address: "127.0.0.1", Port: 7080, ReadTimeoutSeconds: 1, WriteTimeoutSeconds: 1}
-	srv := NewServer(cfg, f.claimer, f.claimer.logger)
-
-	keys := func(path string, list string) []string {
-		rec := doRequest(t, srv, path)
-		require.Equal(t, http.StatusOK, rec.Code)
-		var body map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-		require.NotContains(t, body, "api_version")
-		var entries []map[string]json.RawMessage
-		require.NoError(t, json.Unmarshal(body[list], &entries))
-		require.NotEmpty(t, entries)
-		out := make([]string, 0, len(entries[0]))
-		for k := range entries[0] {
-			out = append(out, k)
-		}
-		return out
-	}
-
-	require.ElementsMatch(t, []string{
-		"leaf_type", "origin_network", "origin_token_address", "destination_network", "destination_address",
-		"amount", "metadata", "deposit_count",
-	}, keys("/claimer/v1/bridges?dest_address="+f.holder.Hex(), "bridges"))
-	require.ElementsMatch(t, []string{
-		"smt_proof_local_exit_root", "smt_proof_rollup_exit_root", "global_index", "mainnet_exit_root",
-		"rollup_exit_root", "origin_network", "origin_token_address", "destination_network",
-		"destination_address", "amount", "metadata", "leaf_type", "deposit_count", "l1_info_tree_index",
-	}, keys("/claimer/v1/claim-params?dest_address="+f.holder.Hex(), "claims"))
-
-	// /health: api_versions is the only addition.
-	rec := doRequest(t, srv, "/claimer/v1/health")
-	var health map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &health))
-	require.Len(t, health, 4)
-	require.JSONEq(t, "[1,2]", string(health["api_versions"]))
-	require.NotContains(t, health, "api_version")
 }

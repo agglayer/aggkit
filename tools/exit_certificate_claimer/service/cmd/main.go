@@ -25,8 +25,7 @@ Given an address it returns:
   - the full set of AgglayerBridge.claimAsset / claimMessage parameters per exit
     (GET /claimer/v2/claim-params)
 
-API v1 (/claimer/v1) is still served: Transfer exits only, looked up by destination address.
-API v2 also serves Message exits, looked up by destination address or by the beneficiary decoded
+It serves Transfer and Message exits, looked up by destination address or by the beneficiary decoded
 from their metadata through a configured message route (messageRoutes / --message-routes).
 
 Data sources:

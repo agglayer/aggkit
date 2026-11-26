@@ -41,17 +41,16 @@ deposit count and global index.
 > `claimMessage`, after which `L1Escrow` pays the holder in L1 USDC). With a
 > [message route](#message-routes) configured for that pair of contracts, `/claimer/v2/bridges` and
 > `/claimer/v2/claim-params` find the exit by the holder's address and return `claim_method`,
-> `beneficiary`, `decoded_amount` and `display_token`. API v1 never returns `Message` exits.
+> `beneficiary`, `decoded_amount` and `display_token`.
 
 > **Pending pre-certificate bridges.** The certificate only lists the exits made at the target block.
-> L2→L1 bridges (assets and, through API v2, messages) emitted earlier and never claimed on L1 are not in it, but their leaves are in
+> L2→L1 bridges (assets and messages) emitted earlier and never claimed on L1 are not in it, but their leaves are in
 > the local exit tree. When `pendingBridgesPath` points to the exit_certificate
 > [PENDING_CLAIMS step](../exit_certificate/README.md#step-pending_claims--unclaimed-l2l1-bridges-emitted-before-the-certificate)
 > output (`step-pending-l2-bridges.json`), `/bridges` and `/claim-params` also return them, after the
 > certificate's exits. Each is matched by the deposit count recorded in that file (not by leaf hash, which
 > is ambiguous for identical exits) and its proof is verified against `new_local_exit_root` before being
-> returned. In API v1 `/bridges` their `metadata` is the raw bridge metadata, whereas a
-> certificate exit shows its hash there; API v2 always returns the raw metadata plus `metadata_hash`. The claimer does not check whether they were claimed afterwards: the claim reverts with
+> returned. Their `metadata` is the raw bridge metadata, with `metadata_hash` next to it. The claimer does not check whether they were claimed afterwards: the claim reverts with
 > `AlreadyClaimed`, so re-run the PENDING_CLAIMS step to refresh the file.
 
 > **After a delta.** When the exit_certificate tool ran in [delta mode](../exit_certificate/README.md#delta-mode--chain-additional-exits-on-a-previous-certificate),
@@ -199,15 +198,13 @@ pod in a cluster (that identity must be granted `objectViewer` on the bucket), o
 ## HTTP API
 
 The HTTP API (endpoints, query parameters, response schemas, and error model) is fully specified in
-[SPEC.md](SPEC.md#http-api). Two API versions are served side by side:
+[SPEC.md](SPEC.md#http-api). The claimer serves **`/claimer/v2`**: `Transfer` and `Message` exits, looked up
+by `address` (destination address, or beneficiary of a decoded message); every entry says its
+`claim_method`. `/claimer/v2/health` returns `api_versions` (`[2]`).
 
-- **`/claimer/v1`** — `Transfer` exits only, looked up by `dest_address`. Unchanged (its `/health` only
-  gained `api_versions`), for the clients already deployed.
-- **`/claimer/v2`** — `Transfer` and `Message` exits, looked up by `address` (destination address, or
-  beneficiary of a decoded message); every entry says its `claim_method`.
-
-A client reads `api_versions` from `/claimer/v1/health` to know what a claimer serves. The versioning
-policy is in [SPEC.md](SPEC.md#api-versioning).
+API v1 has been removed: the claimer and the claims UI are deployed together, so there is no
+side-by-side period. `/claimer/v1/health` still answers (with `api_versions: [2]`) so existing probes keep
+working; any other `/claimer/v1/*` path answers `410 Gone`. See [SPEC.md](SPEC.md#api-versioning).
 
 ## Build & run
 
@@ -248,7 +245,7 @@ CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_clai
 `CGO_ENABLED=1` is required (SQLite via `mattn/go-sqlite3`).
 
 `--version` (alias `-v`) prints the build traceability info — version, git revision/branch, build
-date, Go version and OS/arch — the same data served by `GET /claimer/v1/health`. The values are
+date, Go version and OS/arch — the same data served by `GET /claimer/v2/health`. The values are
 injected at build time via ldflags (use the Makefile target so they are populated).
 
 ## Tests
@@ -257,7 +254,7 @@ injected at build time via ldflags (use the Makefile target so they are populate
 go test ./tools/exit_certificate_claimer/...
 ```
 
-`TestAPIGolden` pins the HTTP contract: it compares every response of API v1 and v2 (health, bridges,
+`TestAPIGolden` pins the HTTP contract: it compares every response of the API (health, bridges,
 claim-params for `claimAsset` and `claimMessage`, error bodies) with the golden files in
 [`service/testdata/api/`](service/testdata/api) (`requests.json` maps each file to its request and
 status). They are built from a fixture that mirrors the Circle USDC route and are meant to be reused

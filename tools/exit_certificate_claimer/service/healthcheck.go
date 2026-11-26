@@ -20,7 +20,7 @@ const HealthCheckDefaultTimeout = 5 * time.Second
 
 // HealthCheckURL builds the URL of the health endpoint served at host:port.
 func HealthCheckURL(host string, port int) string {
-	return fmt.Sprintf("http://%s%s/health", net.JoinHostPort(host, strconv.Itoa(port)), apiBasePath)
+	return fmt.Sprintf("http://%s%s/health", net.JoinHostPort(host, strconv.Itoa(port)), apiBasePathV2)
 }
 
 // HealthCheck probes url and returns nil only if it answers 200 OK within timeout.

@@ -7,60 +7,18 @@
     "file": "v1/health.json"
   },
   {
-    "name": "v1 bridges of a holder: Transfer exits only",
+    "name": "v1 bridges: removed",
     "method": "GET",
     "path": "/claimer/v1/bridges?dest_address=0xa11ce00000000000000000000000000000000001",
-    "status": 200,
-    "file": "v1/bridges.json"
+    "status": 410,
+    "file": "v1/error-410-gone.json"
   },
   {
-    "name": "v1 bridges of the message destination contract: none",
-    "method": "GET",
-    "path": "/claimer/v1/bridges?dest_address=0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB",
-    "status": 200,
-    "file": "v1/bridges-empty.json"
-  },
-  {
-    "name": "v1 claim-params of a holder: every Transfer exit",
+    "name": "v1 claim-params: removed",
     "method": "GET",
     "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001",
-    "status": 200,
-    "file": "v1/claim-params.json"
-  },
-  {
-    "name": "v1 claim-params of one deposit",
-    "method": "GET",
-    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=3",
-    "status": 200,
-    "file": "v1/claim-params-deposit.json"
-  },
-  {
-    "name": "v1 missing dest_address",
-    "method": "GET",
-    "path": "/claimer/v1/bridges",
-    "status": 400,
-    "file": "v1/error-400-missing-dest-address.json"
-  },
-  {
-    "name": "v1 invalid dest_address",
-    "method": "GET",
-    "path": "/claimer/v1/bridges?dest_address=0x1234",
-    "status": 400,
-    "file": "v1/error-400-invalid-dest-address.json"
-  },
-  {
-    "name": "v1 invalid deposit_count",
-    "method": "GET",
-    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001\u0026deposit_count=abc",
-    "status": 400,
-    "file": "v1/error-400-invalid-deposit-count.json"
-  },
-  {
-    "name": "v1 certificate not settled",
-    "method": "GET",
-    "path": "/claimer/v1/claim-params?dest_address=0xa11ce00000000000000000000000000000000001",
-    "status": 409,
-    "file": "v1/error-409-not-settled.json"
+    "status": 410,
+    "file": "v1/error-410-gone.json"
   },
   {
     "name": "v2 health",

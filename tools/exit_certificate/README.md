@@ -550,7 +550,7 @@ certificate's `new_local_exit_root`. This step lists them so the claimer can ser
    (`step-g-new-local-exit-root.json`): those are the certificate's own exits.
 2. Keeps the assets (`leaf_type=0`) and the messages (`leaf_type=1`) destined to L1
    (`destination_network=0`). A message is claimed with `claimMessage`: the claimer serves it through its
-   API v2 only (`/claimer/v2`), API v1 keeps returning assets only.
+   API (`/claimer/v2`).
 3. Calls `isClaimed(depositCount, l2NetworkId)` on `l1BridgeAddress` through `l1RpcUrl` and keeps the
    unclaimed ones (`claimAsset` and `claimMessage` share the same claimed bitmap).
 

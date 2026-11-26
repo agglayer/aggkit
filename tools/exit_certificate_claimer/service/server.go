@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	aggkit "github.com/agglayer/aggkit"
@@ -13,23 +14,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// API major versions. A new one is only added for a breaking change, and the previous one keeps
-// being served for at least one release (see SPEC.md, "API versioning").
-const (
-	apiVersion1 = 1
-	apiVersion2 = 2
-)
+// apiVersion2 is the API major version this claimer serves. API v1 has been removed: the claimer and
+// its UI are deployed together, so only one version is served (see SPEC.md, "API versioning").
+const apiVersion2 = 2
 
 // supportedAPIVersions returns the API major versions this claimer serves.
-func supportedAPIVersions() []int { return []int{apiVersion1, apiVersion2} }
+func supportedAPIVersions() []int { return []int{apiVersion2} }
 
 const (
-	apiBasePath       = "/claimer/v1"
+	// apiBasePathV1 only keeps /health (so existing probes keep working); any other path under it
+	// answers 410 Gone.
+	apiBasePathV1     = "/claimer/v1"
 	apiBasePathV2     = "/claimer/v2"
-	destAddressParam  = "dest_address"
 	addressParam      = "address"
 	depositCountParam = "deposit_count"
 	shutdownTimeout   = 5 * time.Second
+	// apiV1RemovedMsg is the error of every removed /claimer/v1 endpoint.
+	apiV1RemovedMsg = "claimer API v1 has been removed, use " + apiBasePathV2
 )
 
 // Server exposes the claimer over HTTP using Gin.
@@ -60,15 +61,14 @@ func NewServer(cfg *Config, claimer *Claimer, logger *log.Logger) *Server {
 		version:      versionInfo(),
 	}
 
-	v1 := router.Group(apiBasePath)
-	v1.GET("/health", s.handleHealth)
-	v1.GET("/bridges", s.handleBridges)
-	v1.GET("/claim-params", s.handleClaimParams)
-
 	v2 := router.Group(apiBasePathV2)
 	v2.GET("/health", s.handleHealthV2)
 	v2.GET("/bridges", s.handleBridgesV2)
 	v2.GET("/claim-params", s.handleClaimParamsV2)
+
+	// API v1 is gone but its /health keeps answering (with api_versions: [2]) for existing probes.
+	router.GET(apiBasePathV1+"/health", s.handleHealthV1)
+	router.NoRoute(handleRemovedV1)
 
 	return s
 }
@@ -84,8 +84,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		s.logger.Infof("claimer backend listening on %s (base paths %s, %s)",
-			s.address, apiBasePath, apiBasePathV2)
+		s.logger.Infof("claimer backend listening on %s (base path %s)", s.address, apiBasePathV2)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -114,13 +113,23 @@ func versionInfo() VersionInfo {
 	}
 }
 
-func (s *Server) handleHealth(c *gin.Context) {
+// handleHealthV1 answers the legacy /claimer/v1/health so existing probes and monitoring keep working;
+// its api_versions tells a client that only v2 is served.
+func (s *Server) handleHealthV1(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{
 		Status:      "ok",
 		NetworkID:   s.claimer.NetworkID(),
 		Version:     s.version,
 		APIVersions: supportedAPIVersions(),
 	})
+}
+
+// handleRemovedV1 answers 410 Gone for any removed /claimer/v1 path. Other unknown paths keep the
+// default 404.
+func handleRemovedV1(c *gin.Context) {
+	if strings.HasPrefix(c.Request.URL.Path, apiBasePathV1+"/") {
+		c.JSON(http.StatusGone, apiRemovedResponse{Error: apiV1RemovedMsg, APIVersions: supportedAPIVersions()})
+	}
 }
 
 func (s *Server) handleHealthV2(c *gin.Context) {
@@ -133,55 +142,8 @@ func (s *Server) handleHealthV2(c *gin.Context) {
 	})
 }
 
-func (s *Server) handleBridges(c *gin.Context) {
-	destAddr, ok := parseAddress(c, destAddressParam, respondErrorV1)
-	if !ok {
-		return
-	}
-
-	bridges, err := s.claimer.ListBridges(destAddr)
-	if err != nil {
-		respondErrorV1(c, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, BridgesResponse{
-		NetworkID:          s.claimer.NetworkID(),
-		DestinationAddress: destAddr.Hex(),
-		Bridges:            bridges,
-	})
-}
-
-func (s *Server) handleClaimParams(c *gin.Context) {
-	destAddr, ok := parseAddress(c, destAddressParam, respondErrorV1)
-	if !ok {
-		return
-	}
-
-	depositCount, ok := parseDepositCount(c, respondErrorV1)
-	if !ok {
-		return
-	}
-
-	claims, err := s.claimer.BuildClaimParams(c.Request.Context(), destAddr, depositCount)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, ErrLocalExitRootNotSettled) {
-			status = http.StatusConflict
-		}
-		respondErrorV1(c, status, err.Error())
-		return
-	}
-
-	c.JSON(http.StatusOK, ClaimParamsResponse{
-		NetworkID:          s.claimer.NetworkID(),
-		DestinationAddress: destAddr.Hex(),
-		Claims:             claims,
-	})
-}
-
 func (s *Server) handleBridgesV2(c *gin.Context) {
-	address, ok := parseAddress(c, addressParam, respondErrorV2)
+	address, ok := parseAddress(c, addressParam)
 	if !ok {
 		return
 	}
@@ -201,12 +163,12 @@ func (s *Server) handleBridgesV2(c *gin.Context) {
 }
 
 func (s *Server) handleClaimParamsV2(c *gin.Context) {
-	address, ok := parseAddress(c, addressParam, respondErrorV2)
+	address, ok := parseAddress(c, addressParam)
 	if !ok {
 		return
 	}
 
-	depositCount, ok := parseDepositCount(c, respondErrorV2)
+	depositCount, ok := parseDepositCount(c)
 	if !ok {
 		return
 	}
@@ -229,18 +191,15 @@ func (s *Server) handleClaimParamsV2(c *gin.Context) {
 	})
 }
 
-// errorResponder writes an error body in the form of one API version.
-type errorResponder func(c *gin.Context, status int, msg string)
-
 // parseAddress reads and validates the address query param called name, writing a 400 on failure.
-func parseAddress(c *gin.Context, name string, respond errorResponder) (common.Address, bool) {
+func parseAddress(c *gin.Context, name string) (common.Address, bool) {
 	raw := c.Query(name)
 	if raw == "" {
-		respond(c, http.StatusBadRequest, name+" query parameter is required")
+		respondErrorV2(c, http.StatusBadRequest, name+" query parameter is required")
 		return common.Address{}, false
 	}
 	if !common.IsHexAddress(raw) {
-		respond(c, http.StatusBadRequest, "invalid "+name+": "+raw)
+		respondErrorV2(c, http.StatusBadRequest, "invalid "+name+": "+raw)
 		return common.Address{}, false
 	}
 	return common.HexToAddress(raw), true
@@ -248,22 +207,18 @@ func parseAddress(c *gin.Context, name string, respond errorResponder) (common.A
 
 // parseDepositCount reads the optional deposit_count query param. Returns (nil, true) when absent
 // (all matching exits are returned), writing a 400 only on a malformed value.
-func parseDepositCount(c *gin.Context, respond errorResponder) (*uint32, bool) {
+func parseDepositCount(c *gin.Context) (*uint32, bool) {
 	raw := c.Query(depositCountParam)
 	if raw == "" {
 		return nil, true
 	}
 	v, err := strconv.ParseUint(raw, 10, 32)
 	if err != nil {
-		respond(c, http.StatusBadRequest, "invalid "+depositCountParam+": "+raw)
+		respondErrorV2(c, http.StatusBadRequest, "invalid "+depositCountParam+": "+raw)
 		return nil, false
 	}
 	dc := uint32(v)
 	return &dc, true
-}
-
-func respondErrorV1(c *gin.Context, status int, msg string) {
-	c.JSON(status, errorResponse{Error: msg})
 }
 
 func respondErrorV2(c *gin.Context, status int, msg string) {
