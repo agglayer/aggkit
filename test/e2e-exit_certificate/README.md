@@ -28,6 +28,9 @@ Scripts run in order by [run_e2e_test.sh](run_e2e_test.sh) against a Kurtosis CD
 ./test/e2e-exit_certificate/run_e2e_test.sh --delta   # delta mode
 ```
 
+Delta mode needs docker compose >= 2.24: [`claimer-follow.compose.yml`](claimer-follow.compose.yml) drops the
+claimer's published port with `ports: !reset []`.
+
 `--delta` (CI job *Exit-certificate tool E2E (delta mode)*): a chain of three deltas on top of the first
 certificate, each applied with the `recoveries` step from a **real
 [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) submission**: the kit simulates

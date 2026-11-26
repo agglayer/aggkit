@@ -271,18 +271,32 @@ deposit "$CIRCLE_CONTRACT_HOLDER" "$CIRCLE_CONTRACT_HOLDER_AMOUNT"
 CLAIM_SIG="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
 BRIDGE_EVENT_TOPIC="0x501781209a1f8899323b96b4ef08b168df93e0a90c673d1e4cce39366cb62f9b"
 bridge_api() { curl -sf "${BRIDGE_SERVICE_URL}/bridge/v1/$1"; }
-# try_claim_deposit <deposit count>: 0 when the deposit is claimed on L2 (now or already), 1 to retry later.
+# bridge_api_or_unreachable <path>: like bridge_api, but returns 2 when the bridge service cannot be reached at
+# all (curl: 6 = cannot resolve host, 7 = cannot connect) and 1 on any other failure (e.g. 404 while the leaf
+# is not there yet), so the caller can tell "not ready yet" from "misconfigured".
+bridge_api_or_unreachable() {
+    local rc=0
+    bridge_api "$1" || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        6 | 7) return 2 ;;
+        *) return 1 ;;
+    esac
+}
+# try_claim_deposit <deposit count>: 0 when the deposit is claimed on L2 (now or already), 1 to retry later,
+# 2 when the bridge service is unreachable.
 try_claim_deposit() {
     local dc="$1" bridge covering injected proof
     if [[ "$(call "$L2_RPC_URL" "$BRIDGE_ADDR" "isClaimed(uint32,uint32)(bool)" "$dc" 0)" == "true" ]]; then
         return 0
     fi
-    bridge="$(bridge_api "bridge-by-deposit-count?network_id=0&deposit_count=${dc}")" || return 1
-    covering="$(bridge_api "l1-info-tree-index?network_id=0&deposit_count=${dc}")" || return 1
+    bridge="$(bridge_api_or_unreachable "bridge-by-deposit-count?network_id=0&deposit_count=${dc}")" || return $?
+    covering="$(bridge_api_or_unreachable "l1-info-tree-index?network_id=0&deposit_count=${dc}")" || return $?
     [[ "$covering" =~ ^[0-9]+$ ]] || return 1
-    injected="$(bridge_api "injected-l1-info-leaf?network_id=${L2_NETWORK_ID}&leaf_index=${covering}" | jq -r '.l1_info_tree_index // empty')" || return 1
+    injected="$(bridge_api_or_unreachable "injected-l1-info-leaf?network_id=${L2_NETWORK_ID}&leaf_index=${covering}")" || return $?
+    injected="$(jq -r '.l1_info_tree_index // empty' <<<"$injected" 2>/dev/null)" || return 1
     [[ "$injected" =~ ^[0-9]+$ ]] || return 1
-    proof="$(bridge_api "claim-proof?network_id=0&leaf_index=${injected}&deposit_count=${dc}")" || return 1
+    proof="$(bridge_api_or_unreachable "claim-proof?network_id=0&leaf_index=${injected}&deposit_count=${dc}")" || return $?
     cast send --rpc-url "$L2_RPC_URL" --private-key "$PRIVATE_KEY" --json "$BRIDGE_ADDR" "$CLAIM_SIG" \
         "$(jq -r '"[" + (.proof_local_exit_root | join(",")) + "]"' <<<"$proof")" \
         "$(jq -r '"[" + (.proof_rollup_exit_root | join(",")) + "]"' <<<"$proof")" \
@@ -295,13 +309,28 @@ try_claim_deposit() {
     [[ "$(call "$L2_RPC_URL" "$BRIDGE_ADDR" "isClaimed(uint32,uint32)(bool)" "$dc" 0)" == "true" ]]
 }
 CIRCLE_CLAIM_TIMEOUT="${CIRCLE_CLAIM_TIMEOUT:-600}"
+# Consecutive "bridge service unreachable" attempts (5 s apart) tolerated before giving up early.
+CIRCLE_BRIDGE_UNREACHABLE_MAX="${CIRCLE_BRIDGE_UNREACHABLE_MAX:-6}"
 for receipt in "${DEPOSIT_RECEIPTS[@]}"; do
     # depositCount is the last static word of the BridgeEvent data (8 words before the dynamic metadata).
     dc="$(jq -r --arg t "$BRIDGE_EVENT_TOPIC" '[.logs[] | select(.topics[0] == $t)][0].data' <<<"$receipt")"
     dc="$(cast to-dec "0x${dc:450:64}")"
     log_info "⏳ Claim deposit ${dc} on L2 (claimMessage → ZkMinterBurner mints)"
     deadline=$(( $(date +%s) + CIRCLE_CLAIM_TIMEOUT ))
-    until try_claim_deposit "$dc"; do
+    unreachable=0
+    while :; do
+        rc=0
+        try_claim_deposit "$dc" || rc=$?
+        (( rc == 0 )) && break
+        if (( rc == 2 )); then
+            unreachable=$((unreachable + 1))
+            if (( unreachable >= CIRCLE_BRIDGE_UNREACHABLE_MAX )); then
+                log_error "bridge service unreachable at ${BRIDGE_SERVICE_URL} (${unreachable} attempts in a row): check BRIDGE_SERVICE_URL"
+                exit 1
+            fi
+        else
+            unreachable=0
+        fi
         if (( $(date +%s) >= deadline )); then
             log_error "deposit ${dc} could not be claimed on L2 within ${CIRCLE_CLAIM_TIMEOUT}s (no global exit root covering it was injected, or the claim reverts)"
             exit 1
