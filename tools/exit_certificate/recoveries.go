@@ -453,14 +453,118 @@ func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCa
 	if len(out.Applied) == 0 {
 		return out, nil
 	}
-	applyToState(st, perToken)
-	st.Ledger = append(st.Ledger, out.Applied...)
+	// Everything that can still fail runs before the state changes: a ledger entry must never record a recovery
+	// whose delta the delta mode would then refuse.
+	if err := rejectDuplicateRecoveryExits(out.Applied); err != nil {
+		return nil, err
+	}
 	exits, err := buildRecoveryExits(out.Applied)
 	if err != nil {
 		return nil, err
 	}
+	applyToState(st, perToken)
+	st.Ledger = append(st.Ledger, out.Applied...)
 	out.Exits = exits
 	return out, nil
+}
+
+// recoveryExitKey is what makes two recovery exits the same leaf in the delta mode, but the metadata of a
+// Transfer (see rejectDuplicateRecoveryExits).
+type recoveryExitKey struct {
+	Message            bool
+	Token              tokenKey
+	DestinationNetwork uint32
+	Destination        common.Address
+	Amount             string
+}
+
+// rejectDuplicateRecoveryExits fails when two exits of this delta would be the same leaf, which the delta mode
+// refuses (rejectDuplicateLeaves): two identical outputs of one version-1 case, or of two cases of this
+// delta, or a version-1 Transfer identical to the exit of a legacy (destination, token) — legacy cases are
+// merged into one exit per (destination, token) by buildRecoveryExits, so they never collide among
+// themselves. A Transfer with an empty metadata gets the token's metadata in the delta mode
+// (deltaRawMetadata), so it collides with an otherwise identical Transfer whatever the latter's metadata.
+// Leaves identical to exits of previous runs are not checked here.
+//
+// It assumes every case passed its checks: each version-1 output then has exactly one entry, in order, so an
+// entry's position within its case is its outputs[] index.
+func rejectDuplicateRecoveryExits(applied []RecoveryLedgerEntry) error {
+	type exit struct {
+		label    string
+		metadata string // 0x hex; "" = none
+	}
+	type legacyKey struct {
+		Dest  common.Address
+		Token tokenKey
+	}
+	legacySum := map[legacyKey]*big.Int{}
+	legacySources := map[legacyKey][]string{}
+	var legacyOrder []legacyKey
+	byKey := map[recoveryExitKey][]exit{}
+	var errs []error
+	outputIdx := map[string]int{} // case hash → next outputs[] index
+	for _, a := range applied {
+		amount, ok := new(big.Int).SetString(a.Amount, decimalBase)
+		if !ok {
+			return fmt.Errorf("%s: amount %q is not a base-10 integer", a.Source, a.Amount)
+		}
+		token := tokenKey{a.OriginNetwork, a.OriginTokenAddress}
+		if a.Version == recoveryVersionLegacy {
+			k := legacyKey{a.Destination, token}
+			if legacySum[k] == nil {
+				legacySum[k] = new(big.Int)
+				legacyOrder = append(legacyOrder, k)
+			}
+			legacySum[k].Add(legacySum[k], amount)
+			legacySources[k] = append(legacySources[k], a.Source)
+			continue
+		}
+		i := outputIdx[a.CaseHash]
+		outputIdx[a.CaseHash] = i + 1
+		k := recoveryExitKey{
+			Message: a.isMessage(), Token: token, DestinationNetwork: a.DestinationNetwork,
+			Destination: a.Destination, Amount: amount.String(),
+		}
+		metadata := strings.ToLower(a.Metadata)
+		if metadata == "0x" {
+			metadata = ""
+		}
+		byKey[k] = append(byKey[k], exit{label: fmt.Sprintf("%s: outputs[%d]", a.Source, i), metadata: metadata})
+	}
+	for _, k := range legacyOrder {
+		ek := recoveryExitKey{Token: k.Token, Destination: k.Dest, Amount: legacySum[k].String()}
+		label := fmt.Sprintf("the legacy exit of %s (funds of token %d/%s for %s)",
+			strings.Join(legacySources[k], ", "), k.Token.OriginNetwork, k.Token.OriginTokenAddress.Hex(), k.Dest.Hex())
+		byKey[ek] = append([]exit{{label: label}}, byKey[ek]...)
+	}
+	keys := make([]recoveryExitKey, 0, len(byKey))
+	for k, exits := range byKey {
+		if len(exits) > 1 {
+			keys = append(keys, k)
+		}
+	}
+	// deterministic error order: by the label of the first exit of each group
+	sort.Slice(keys, func(i, j int) bool { return byKey[keys[i]][0].label < byKey[keys[j]][0].label })
+	for _, k := range keys {
+		exits := byKey[k]
+		for i := range exits {
+			for j := i + 1; j < len(exits); j++ {
+				a, b := exits[i], exits[j]
+				if a.metadata != b.metadata && (k.Message || (a.metadata != "" && b.metadata != "")) {
+					continue
+				}
+				kind := "Transfer"
+				if k.Message {
+					kind = "Message"
+				}
+				errs = append(errs, fmt.Errorf("%s and %s are the same %s exit (token_info %d/%s, destination %d/%s, "+
+					"amount %s): identical exits in one delta are refused by the delta mode — merge them into one "+
+					"output (sum the amounts) or make them differ", a.label, b.label, kind, k.Token.OriginNetwork,
+					k.Token.OriginTokenAddress.Hex(), k.DestinationNetwork, k.Destination.Hex(), k.Amount))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // recoveryIndex resolves tokens against the LBT: L2 token → origin (legacy) and origin → L2 token (version 1).

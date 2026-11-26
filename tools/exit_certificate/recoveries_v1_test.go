@@ -594,3 +594,81 @@ func TestDeltaMessageLeafHash_MatchesBridgeContract(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash(asTransfer), leaves[0].Hash())
 }
+
+// Two exits of one delta that would be the same leaf are refused by the delta mode (rejectDuplicateLeaves), so
+// applyRecoveries refuses them first, naming the case and output, and leaves the state untouched: no ledger
+// entry may record a recovery whose delta cannot be certified.
+func TestApplyRecoveries_DuplicateExitsRefused(t *testing.T) {
+	transfer := v1Output("Transfer", 0, recOrigin, 0, recDest1, "40", "0xaabb")
+	message := v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xbeef")
+	tests := map[string]struct {
+		cases func(t *testing.T) []recoveryCase
+		want  []string
+	}{
+		"identical transfers in one case": {
+			func(t *testing.T) []recoveryCase {
+				t.Helper()
+				return []recoveryCase{v1Case(t, "a.tgz", "h-a", v1Doc(message, transfer, transfer))}
+			},
+			[]string{"a.tgz: outputs[1] and a.tgz: outputs[2] are the same Transfer exit"},
+		},
+		"identical messages in one case": {
+			func(t *testing.T) []recoveryCase {
+				t.Helper()
+				return []recoveryCase{v1Case(t, "a.tgz", "h-a", v1Doc(message, message))}
+			},
+			[]string{"a.tgz: outputs[0] and a.tgz: outputs[1] are the same Message exit"},
+		},
+		"identical outputs across two cases": {
+			func(t *testing.T) []recoveryCase {
+				t.Helper()
+				return []recoveryCase{
+					v1Case(t, "a.tgz", "h-a", v1Doc(transfer)),
+					v1Case(t, "b.tgz", "h-b", v1Doc(message, transfer)),
+				}
+			},
+			[]string{"a.tgz: outputs[0] and b.tgz: outputs[1] are the same Transfer exit"},
+		},
+		"transfer without metadata gets the token's: same leaf as one with it": {
+			func(t *testing.T) []recoveryCase {
+				t.Helper()
+				return []recoveryCase{v1Case(t, "a.tgz", "h-a", v1Doc(transfer,
+					v1Output("Transfer", 0, recOrigin, 0, recDest1, "40", "0x")))}
+			},
+			[]string{"a.tgz: outputs[0] and a.tgz: outputs[1]"},
+		},
+		"v1 transfer identical to a legacy exit": {
+			func(t *testing.T) []recoveryCase {
+				t.Helper()
+				return []recoveryCase{
+					recCase("legacy.tgz", "h-l", recLocked1, recDest1, RecoveryFund{Token: recWrapped.Hex(), Amount: "40"}),
+					v1Case(t, "a.tgz", "h-a", v1Doc(v1Output("Transfer", 0, recOrigin, 0, recDest1, "40", "0x"))),
+				}
+			},
+			[]string{"the legacy exit of legacy.tgz", "and a.tgz: outputs[0] are the same Transfer exit"},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			st := newRecoveriesState()
+			_, err := applyRecoveries(st, recL2Network, tc.cases(t))
+			for _, w := range tc.want {
+				require.ErrorContains(t, err, w)
+			}
+			require.Equal(t, newRecoveriesState(), st)
+		})
+	}
+
+	// Exits that differ in anything that goes into the leaf are fine: amount, destination, or — when both
+	// carry one — a Message's or Transfer's metadata.
+	st := newRecoveriesState()
+	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
+		v1Case(t, "a.tgz", "h-a", v1Doc(transfer, message,
+			v1Output("Transfer", 0, recOrigin, 0, recDest1, "40", "0xaabbcc"),
+			v1Output("Transfer", 0, recOrigin, 0, recDest2, "40", "0xaabb"),
+			v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xbeee"))),
+		recCase("legacy.tgz", "h-l", recLocked1, recDest1, RecoveryFund{Token: recWrapped.Hex(), Amount: "41"}),
+	})
+	require.NoError(t, err)
+	require.Len(t, out.Exits, 6)
+}

@@ -826,9 +826,12 @@ Two `recovery.json` formats are accepted, and can be mixed in the same run:
 The exits of legacy cases come first: one Transfer exit to L1 per (destination, origin token), summing the cases
 that coincide, sorted (as before version 1 existed). The outputs of version-1 cases follow **one exit per output,
 field by field and in the same order** (the order of the kit's `BridgeEvent`s; cases in path order): they are never
-merged, sorted or re-derived, and each keeps its `metadata`. Two identical outputs in the same batch therefore
-stay two identical exits, which the delta run rejects; an output identical to a leaf already in the exit tree is
-accepted (see [Delta exits file](#delta-exits-file)). Checks, all or nothing (on any
+merged, sorted or re-derived, and each keeps its `metadata`. Two exits of the batch that would be the same leaf
+— two identical outputs of one case or of two cases, or a version-1 Transfer identical to the exit of a legacy
+(destination, token) — are refused here, naming the case and output, because the delta run would reject them
+after the ledger recorded them; a Transfer with empty `metadata` counts as identical to one with any metadata, since
+the delta run fills it in with the token's. An output identical to a leaf already in the exit tree is accepted (see
+[Delta exits file](#delta-exits-file)). Checks, all or nothing (on any
 error nothing is written):
 
 - same validation as the kit's `validate-recovery.sh` of each format (no unknown fields, every field present; legacy:
