@@ -191,7 +191,11 @@ func (f *follower) checkNext(ctx context.Context) bool {
 
 	result, err := f.tryRun(ctx, loc, height)
 	if ctx.Err() != nil {
-		return false // shutting down: not a result worth reporting
+		// Shutting down: not a result worth reporting, but no run is being prepared any more.
+		f.mu.Lock()
+		f.status.Preparing = false
+		f.mu.Unlock()
+		return false
 	}
 	switch result {
 	case FollowResultSwitched:

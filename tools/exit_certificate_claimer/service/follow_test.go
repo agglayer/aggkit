@@ -43,12 +43,17 @@ type followL1 struct {
 	roots map[common.Hash]common.Hash
 	fail  map[common.Hash]error
 	opens int
+	// onOpen, when set, runs on every open (before its result), e.g. to stop the claimer mid-prepare.
+	onOpen func()
 }
 
 func (l *followL1) open(_ context.Context, ger common.Hash) (L1InfoTreeQuerier, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.opens++
+	if l.onOpen != nil {
+		l.onOpen()
+	}
 	if err := l.fail[ger]; err != nil {
 		return nil, err
 	}
@@ -410,6 +415,28 @@ func TestFollowKeepsRunWhenL1SyncFails(t *testing.T) {
 	e.l1.setFail(e.gers[5], nil)
 	require.Equal(t, 1, c.follow.CheckPending(context.Background()))
 	c.requireServing(t, 5)
+}
+
+// A shutdown while the next run is being prepared is not reported as a result, but /health no longer says a
+// run is being prepared.
+func TestFollowShutdownWhilePreparing(t *testing.T) {
+	t.Parallel()
+	e := newFollowEnv(t)
+	e.archive(4)
+	c := e.start(4, nil)
+
+	e.archive(5)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.l1.mu.Lock()
+	e.l1.onOpen = cancel
+	e.l1.fail[e.gers[5]] = context.Canceled
+	e.l1.mu.Unlock()
+	require.Zero(t, c.follow.CheckPending(ctx))
+	h := c.health(t)
+	require.False(t, h.Follow.Preparing)
+	require.Empty(t, h.Follow.LastCheckResult)
+	c.requireServing(t, 4)
 }
 
 func TestFollowRefusesInconsistentRun(t *testing.T) {
