@@ -73,9 +73,9 @@ func TestEVMDriver_CheckFirstBlockNumberParams(t *testing.T) {
 		expectErr        bool
 	}{
 		{
-			name:             "nil firstBlockNumber returns error",
+			name:             "nil firstBlockNumber is the lazy mode",
 			firstBlockNumber: nil,
-			expectErr:        true,
+			expectErr:        false,
 		},
 		{
 			name:             "firstBlockNumber different from FromBlock returns error",

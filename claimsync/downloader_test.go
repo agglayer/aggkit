@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridgel2"
@@ -460,8 +461,8 @@ func TestBuildAppender(t *testing.T) {
 	ethClient := mocks.NewEthClienter(t)
 	// Only called for the claimEventSignature subtest
 	ethClient.EXPECT().
-		Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+		CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
 			*arg = Call{
@@ -484,9 +485,10 @@ func TestBuildAppender(t *testing.T) {
 		agglayerBridge:   agglayerBridge,
 		agglayerBridgeL2: agglayerBridgeL2,
 	}
-	appenderMap, err := buildAppender(ethClient, bridgeAddr, deployment, lg)
+	appenderMap, contextualMap, err := buildAppender(ethClient, bridgeAddr, deployment, lg)
 	require.NoError(t, err)
 	require.NotNil(t, appenderMap)
+	require.NotNil(t, contextualMap)
 
 	tests := []struct {
 		name           string
@@ -597,11 +599,16 @@ func TestBuildAppender(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			log := tt.logBuilder(t)
-			appenderFunc, exists := appenderMap[tt.eventSignature]
-			require.True(t, exists)
-
 			block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: blockNum}}
-			err := appenderFunc(block, log)
+			var err error
+			if contextualFunc, ok := contextualMap[tt.eventSignature]; ok {
+				// The handlers that trace their transaction run with the active download context.
+				err = contextualFunc(t.Context(), block, log)
+			} else {
+				appenderFunc, exists := appenderMap[tt.eventSignature]
+				require.True(t, exists)
+				err = appenderFunc(block, log)
+			}
 			require.NoError(t, err)
 			require.Equal(t, tt.logsCount, len(block.Events))
 		})
@@ -818,8 +825,8 @@ func TestBuildClaimEventHandlerPreEtrog_OK(t *testing.T) {
 	claimAssetInput := append(append([]byte{}, claimAssetPreEtrogMethodID...), claimAssetCalldata...)
 
 	ethClient := mocks.NewEthClienter(t)
-	ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
 			*arg = Call{Type: CallTypeCall, To: bridgeAddr, From: common.HexToAddress("0x01"), Input: claimAssetInput}
@@ -832,7 +839,7 @@ func TestBuildClaimEventHandlerPreEtrog_OK(t *testing.T) {
 	handler := buildClaimEventHandlerPreEtrog(legacyBridge, ethClient, bridgeAddr, true, lg)
 
 	block := &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}
-	err = handler(block, logEntry)
+	err = handler(t.Context(), block, logEntry)
 	require.NoError(t, err)
 	require.Len(t, block.Events, 1)
 
@@ -841,4 +848,54 @@ func TestBuildClaimEventHandlerPreEtrog_OK(t *testing.T) {
 	claim := ev.Claim
 	require.Equal(t, new(big.Int).SetUint64(uint64(globalIndex)), claim.GlobalIndex)
 	require.Equal(t, txHash, claim.TxHash)
+}
+
+// TestBuildClaimEventHandlerPreEtrog_CancelWhileTraceStalls checks that the claim handler traces its
+// transaction with the active download context: a debug_traceTransaction that stalls until its context
+// is canceled must return once the download generation is canceled (the driver joins the downloader
+// before a rollback, so a handler that ignored the context would block the reorg forever).
+func TestBuildClaimEventHandlerPreEtrog_CancelWhileTraceStalls(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	lg := logger.WithFields("module", "test")
+
+	preEtrogABI, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+	event, err := preEtrogABI.EventByID(claimEventSignaturePreEtrog)
+	require.NoError(t, err)
+	data, err := event.Inputs.Pack(uint32(77), uint32(1), common.Address{}, common.Address{}, big.NewInt(10))
+	require.NoError(t, err)
+	logEntry := types.Log{
+		Topics: []common.Hash{claimEventSignaturePreEtrog},
+		Data:   data,
+		TxHash: common.HexToHash("0xBEEF"),
+	}
+
+	reached := make(chan struct{})
+	ethClient := mocks.NewEthClienter(t)
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, _ any, _ string, _ ...any) error {
+			close(reached)
+			<-ctx.Done()
+			return ctx.Err()
+		}).Once()
+
+	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, ethClient)
+	require.NoError(t, err)
+	handler := buildClaimEventHandlerPreEtrog(legacyBridge, ethClient, bridgeAddr, true, lg)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- handler(ctx, &sync.EVMBlock{EVMBlockHeader: sync.EVMBlockHeader{Num: 1}}, logEntry)
+	}()
+
+	<-reached
+	cancel()
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the claim handler did not return after the download context was canceled")
+	}
 }

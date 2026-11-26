@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/big"
 	"os"
@@ -51,7 +52,7 @@ func TestExtractTxnAddressesExploratory(t *testing.T) {
 	}
 	logs, err := ethClient.FilterLogs(t.Context(), filterQuery)
 	require.NoError(t, err)
-	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+	foundCalls, rootCall, err := extractCallData(t.Context(), ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
 		common.HexToHash("0x0b276867aa22d1c162c2700d35c500a124a6a953c7b24931a1d3efc63f7cd4ab"),
 		logger.WithFields("module", "test"), nil)
 	require.NoError(t, err)
@@ -118,7 +119,7 @@ func TestExtractCallDataCaseNotMatchingExploratory(t *testing.T) {
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
 	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client(), nil)
-	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+	foundCalls, rootCall, err := extractCallData(t.Context(), ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
 		common.HexToHash("0x280334ea89e49380d29e3c3931b9217bf699eaa7fa23e126c74a05eea1258503"),
 		logger.WithFields("module", "test"), nil)
 	require.NoError(t, err)
@@ -143,7 +144,7 @@ func TestExtractCallDataCaseMessageExploratory(t *testing.T) {
 	ethRawClient, err := ethclient.Dial(l1url)
 	require.NoError(t, err)
 	ethClient := etherman.NewDefaultEthClient(ethRawClient, ethRawClient.Client(), nil)
-	foundCalls, rootCall, err := extractCallData(ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
+	foundCalls, rootCall, err := extractCallData(t.Context(), ethClient, common.HexToAddress("0x2a3dd3eb832af982ec71669e178424b10dca2ede"),
 		common.HexToHash("0x84a7e20778bd35231bfaefdcbb4ada9169b08658db49d69d38e3f467a799db38"),
 		logger.WithFields("module", "test"), nil)
 	require.NoError(t, err)
@@ -263,8 +264,8 @@ func TestBuildAppender(t *testing.T) {
 		common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"))
 
 	ethClient.EXPECT().
-		Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+		CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			arg, ok := result.(*Call)
 			require.True(t, ok)
 			*arg = Call{Type: CallTypeCall, To: bridgeAddr, Input: BridgeAssetMethodID}
@@ -691,8 +692,8 @@ func TestTxnSenderField(t *testing.T) {
 				Maybe()
 
 			ethClient.EXPECT().
-				Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-				Run(func(result any, method string, args ...any) {
+				CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, result any, method string, args ...any) {
 					arg, ok := result.(*Call)
 					require.True(t, ok)
 					*arg = tt.callFrame
@@ -701,8 +702,8 @@ func TestTxnSenderField(t *testing.T) {
 				Maybe()
 
 			ethClient.EXPECT().
-				Call(mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).
-				Run(func(result any, method string, args ...any) {
+				CallContext(mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).Return(nil).
+				Run(func(_ context.Context, result any, method string, args ...any) {
 					arg, ok := result.(*Transaction)
 					require.True(t, ok)
 					arg.FromRaw = tt.callFrame.From.Hex()
@@ -849,9 +850,9 @@ func TestExtractTxnAddresses(t *testing.T) {
 			ctx := t.Context()
 			logger := logger.WithFields("module", "test")
 			ethClient.EXPECT().
-				Call(mock.Anything, "eth_getTransactionByHash", mock.Anything).
+				CallContext(mock.Anything, mock.Anything, "eth_getTransactionByHash", mock.Anything).
 				Return(tt.responseTransactionHashError).
-				Run(func(result any, method string, args ...any) {
+				Run(func(_ context.Context, result any, method string, args ...any) {
 					arg, ok := result.(*Transaction)
 					require.True(t, ok)
 					if tt.responseTransactionHash != nil {
@@ -859,8 +860,8 @@ func TestExtractTxnAddresses(t *testing.T) {
 					}
 				}).
 				Maybe()
-			ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-				Run(func(result any, method string, args ...any) {
+			ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+				Run(func(_ context.Context, result any, method string, args ...any) {
 					arg, ok := result.(*Call)
 					require.True(t, ok)
 					*arg = *tt.responseDebugTrace
@@ -1008,15 +1009,15 @@ func (f multiCallerFixture) mockClient(t *testing.T, traceErr error, receipt *ty
 	receiptErr error) *mocks.EthClienter {
 	t.Helper()
 	ethClient := mocks.NewEthClienter(t)
-	ethClient.EXPECT().Call(mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, GetTransactionByHashEndpoint, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			tx, ok := result.(*Transaction)
 			require.True(t, ok)
 			tx.FromRaw = f.txnSender.Hex()
 			tx.To = f.txTo.Hex()
 		}).Return(nil).Maybe()
-	ethClient.EXPECT().Call(mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
-		Run(func(result any, method string, args ...any) {
+	ethClient.EXPECT().CallContext(mock.Anything, mock.Anything, DebugTraceTxEndpoint, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, result any, method string, args ...any) {
 			if traceErr != nil {
 				return
 			}

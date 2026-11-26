@@ -366,7 +366,7 @@ func TestDownloaderSovereign_GetInfoByGlobalExitRootErrorHandlingInAppender(t *t
 			}
 
 			// This should trigger the error path (or return nil in some cases)
-			err = insertAppender(block, testLogs[0])
+			err = insertAppender(t.Context(), block, testLogs[0])
 			if tt.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErrorMessage)

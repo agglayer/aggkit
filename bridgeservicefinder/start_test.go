@@ -372,7 +372,11 @@ func TestStart_InitialCacheAcrossMultipleNetworks(t *testing.T) {
 
 // TestStart_UnreachableService_RequireAllHealthyOnStartFalse covers matrix item #6a: Start returns
 // nil even when a resolved service is unreachable (default RequireAllHealthyOnStart=false), and the
-// URL is still served, with the internal healthy flag recorded as false.
+// URL is still served, with the internal healthy flag recorded as false. This is a unit test of the
+// health matrix: the injected HealthChecker reports every probed URL unhealthy, so the unhealthy
+// outcome is deterministic and independent of real HTTP reachability (a resolved sequencer URL has
+// its port rewritten to DefaultBridgeServicePort, which may coincide with a locally listening
+// service and would otherwise make the probe succeed).
 func TestStart_UnreachableService_RequireAllHealthyOnStartFalse(t *testing.T) {
 	backend, auth := newTestBackend(t)
 	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
@@ -388,7 +392,9 @@ func TestStart_UnreachableService_RequireAllHealthyOnStartFalse(t *testing.T) {
 
 	f, err := New(cfg, Options{
 		EthClient: newTestEthClient(backend),
-		Logger:    testLogger(),
+		// Deterministic unhealthy: the probe result is injected, not derived from the dead URL.
+		HealthChecker: newMapHealthChecker(nil),
+		Logger:        testLogger(),
 	})
 	require.NoError(t, err)
 
@@ -411,7 +417,9 @@ func TestStart_UnreachableService_RequireAllHealthyOnStartFalse(t *testing.T) {
 
 // TestStart_UnreachableService_RequireAllHealthyOnStartTrue covers matrix item #6b: Start returns a
 // wrapped ErrServicesUnhealthyOnStart when RequireAllHealthyOnStart=true and at least one resolved
-// service is unreachable.
+// service is unreachable. Like the False variant this is a unit test of the health matrix: the
+// injected HealthChecker reports every probed URL unhealthy, so the failure is deterministic and
+// independent of real HTTP reachability (see the False variant for the port-rewrite caveat).
 func TestStart_UnreachableService_RequireAllHealthyOnStartTrue(t *testing.T) {
 	backend, auth := newTestBackend(t)
 	mgrAddr, rollups := deployRollupManagerWithRollups(t, backend, auth, 1)
@@ -427,7 +435,9 @@ func TestStart_UnreachableService_RequireAllHealthyOnStartTrue(t *testing.T) {
 
 	f, err := New(cfg, Options{
 		EthClient: newTestEthClient(backend),
-		Logger:    testLogger(),
+		// Deterministic unhealthy: the probe result is injected, not derived from the dead URL.
+		HealthChecker: newMapHealthChecker(nil),
+		Logger:        testLogger(),
 	})
 	require.NoError(t, err)
 

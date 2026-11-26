@@ -107,6 +107,12 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfgL2Multidownloader.BlockFinality = aggkittypes.LatestBlock
 	cfgL2Multidownloader.Enabled = false
 	require.Equal(t, cfgL2Multidownloader, cfg.L2Multidownloader)
+	// Downloader defaults to the multidownloader in the L1 synchronizers and to legacy in the L2
+	// ones (the only one they support), independently per section
+	require.Equal(t, types.Multidownloader, cfg.BridgeL1Sync.Downloader)
+	require.Equal(t, types.Multidownloader, cfg.ClaimL1Sync.Downloader)
+	require.Equal(t, types.LegacyDownloader, cfg.BridgeL2Sync.Downloader)
+	require.Equal(t, types.LegacyDownloader, cfg.ClaimL2Sync.Downloader)
 	require.Nil(t, cfg.L2NetworkConfig.InitialLER)
 	// AggOracle defaults: auto mode and a valid committee v2 section
 	require.Equal(t, aggoracle.ModeAuto, cfg.AggOracle.Mode)
@@ -116,6 +122,52 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, time.Duration(0), cfg.AggOracle.CommitteeV2.PendingGERTimeout.Duration)
 	require.Empty(t, cfg.AggOracle.CommitteeV2.ValidatorURLOverrides)
 	require.NoError(t, cfg.AggOracle.Validate())
+}
+
+func TestLoadConfigDownloaderSelector(t *testing.T) {
+	t.Run("defaults to legacy when the selector is missing", func(t *testing.T) {
+		cfg, err := LoadFileFromString("[BridgeL1Sync]\n", ConfigType)
+		require.NoError(t, err)
+		require.Empty(t, cfg.BridgeL1Sync.Downloader)
+		require.True(t, cfg.BridgeL1Sync.Downloader.IsLegacy())
+		require.True(t, cfg.ClaimL1Sync.Downloader.IsLegacy())
+	})
+
+	t.Run("bridge and claim selectors are independent", func(t *testing.T) {
+		cfg, err := LoadFileFromString(`
+[BridgeL1Sync]
+Downloader = "multidownloader"
+[ClaimL1Sync]
+Downloader = "legacy"
+[BridgeL2Sync]
+Downloader = "legacy"
+[ClaimL2Sync]
+Downloader = "legacy"
+`, ConfigType)
+		require.NoError(t, err)
+		require.Equal(t, types.Multidownloader, cfg.BridgeL1Sync.Downloader)
+		require.Equal(t, types.LegacyDownloader, cfg.ClaimL1Sync.Downloader)
+		require.Equal(t, types.LegacyDownloader, cfg.BridgeL2Sync.Downloader)
+		require.Equal(t, types.LegacyDownloader, cfg.ClaimL2Sync.Downloader)
+	})
+
+	t.Run("case-insensitive and trimmed", func(t *testing.T) {
+		cfg, err := LoadFileFromString(`
+[BridgeL1Sync]
+Downloader = " MultiDownloader "
+`, ConfigType)
+		require.NoError(t, err)
+		require.Equal(t, types.Multidownloader, cfg.BridgeL1Sync.Downloader)
+	})
+
+	t.Run("invalid value is rejected while decoding", func(t *testing.T) {
+		_, err := LoadFileFromString(`
+[BridgeL1Sync]
+Downloader = "bogus"
+`, ConfigType)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "invalid Downloader")
+	})
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {

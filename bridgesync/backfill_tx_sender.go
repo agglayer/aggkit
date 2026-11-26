@@ -12,8 +12,11 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/aggchain-multisig/agglayerbridge"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
+	mdrtypes "github.com/agglayer/aggkit/multidownloader/types"
 	"github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	coretypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/russross/meddler"
 )
 
@@ -23,7 +26,34 @@ const (
 	dbTimeout = 2 * time.Minute
 	// Number of workers for parallel txn sender extraction
 	numWorkers = 5
+	// backfillRetryBaseDelay is the delay before the first retry of a batch whose records could
+	// not be resolved yet. It is deliberately a package constant (not an operator-facing TOML
+	// field) so the retry policy stays internal and does not add configuration surface.
+	backfillRetryBaseDelay = 1 * time.Second
+	// backfillRetryMaxDelay caps the exponential backoff between retries. Capping keeps
+	// cancellation observable within a bounded window and prevents an unbounded sleep.
+	backfillRetryMaxDelay = 30 * time.Second
+	// backfillMaxConsecutiveRetries bounds the retries of a batch for errors that are neither the
+	// "coverage not available yet" sentinel nor a permanent inclusion mismatch. Coverage
+	// unavailability is retried without a fixed cap while the context is active because the
+	// multidownloader may take hours to fill history; a transport/DB error is retried only a
+	// bounded number of times before the backfill stops with a clear error instead of spinning.
+	backfillMaxConsecutiveRetries = 5
 )
+
+// ErrBackfillBackendRequired is returned when a transaction provider is configured without the
+// multidownloader backend that supplies the canonical bridge logs. Without the backend the exact
+// original log cannot be resolved without falling back to a direct RPC FilterLogs, which the
+// provider path deliberately forbids.
+var ErrBackfillBackendRequired = errors.New(
+	"backfill: a download backend is required when a transaction provider is set")
+
+// logAvailabilityChecker is the optional capability exposed by a multidownloader backend to report
+// whether a log query is already covered by the synced data. When implemented it is used as a
+// pre-check so the backfill never blocks indefinitely waiting for coverage that will not advance.
+type logAvailabilityChecker interface {
+	IsAvailable(query mdrtypes.LogQuery) bool
+}
 
 // BackfillTxnSender handles the backfilling of txn_sender field for bridge records
 type BackfillTxnSender struct {
@@ -33,6 +63,81 @@ type BackfillTxnSender struct {
 	bridgeAddr        common.Address
 	dbTimeout         time.Duration
 	syncFromInBridges bool
+	// provider, when set, resolves transactions through the shared multidownloader transaction
+	// provider instead of eth_getTransactionByHash. It is optional: a nil provider keeps the legacy
+	// behaviour.
+	provider types.TransactionProvider
+	// backend, when set, is the multidownloader used to read the canonical bridge logs for the
+	// records being backfilled. It is required whenever provider is set so the exact original log
+	// (never a synthesized one, never a direct RPC FilterLogs) is passed to the provider.
+	backend types.MultiDownloaderLegacy
+	// retryDelay returns the delay before the next retry of a batch. It is a field (not a bare
+	// constant) so unit tests can inject a zero/fast delay instead of waiting for real backoff.
+	retryDelay func(attempt int) time.Duration
+	// sleep waits for the retry delay or until ctx is done, whichever comes first. It is a field
+	// so tests can inject a deterministic replacement and never depend on wall-clock time.
+	sleep func(ctx context.Context, d time.Duration) error
+	// maxConsecutiveRetries bounds retries of a batch for errors that are not the coverage
+	// sentinel. It defaults to backfillMaxConsecutiveRetries and is a field so tests can shrink it.
+	maxConsecutiveRetries int
+
+	// completed tracks the records successfully processed in the current run whose
+	// from_address legitimately stays NULL (for example an asset event whose trace has no
+	// bridgeAsset call). Such a record still matches missingFieldsCondition after its
+	// txn_sender is persisted, so when a failed batch is retried at the same keyset cursor it
+	// would be re-selected and re-resolved. The keyset cursor - not this set - guarantees the
+	// run makes forward progress; the set only keeps an in-place batch retry from re-resolving
+	// a record that already succeeded. It is scoped to a single backfillTable run, is not
+	// persisted, and is only touched from the single backfillTable goroutine (never from the
+	// extraction workers), so it needs no synchronization. A record whose extraction failed is
+	// never added, so it stays eligible for retry.
+	completed map[recordKey]struct{}
+}
+
+// recordKey identifies one bridge record within a table run. It mirrors the (block_num,
+// block_pos) primary key used as the keyset pagination cursor.
+type recordKey struct {
+	blockNum uint64
+	blockPos uint64
+}
+
+// markCompleted records that a record was successfully processed and its from_address will
+// legitimately stay NULL, so it must not be re-resolved if its batch is retried in place.
+func (b *BackfillTxnSender) markCompleted(blockNum, blockPos uint64) {
+	if b.completed == nil {
+		b.completed = make(map[recordKey]struct{})
+	}
+	b.completed[recordKey{blockNum: blockNum, blockPos: blockPos}] = struct{}{}
+}
+
+// isCompleted reports whether a record was already successfully processed in this run.
+func (b *BackfillTxnSender) isCompleted(blockNum, blockPos uint64) bool {
+	_, ok := b.completed[recordKey{blockNum: blockNum, blockPos: blockPos}]
+	return ok
+}
+
+// BackfillOption customizes BackfillTxnSender construction.
+type BackfillOption func(*BackfillTxnSender)
+
+// WithTransactionProvider makes the backfill resolve the transactions through the shared
+// multidownloader transaction provider. The exact original log is looked up through the configured
+// download backend (FilterLogs on the record's block) and passed to the provider, which resolves
+// the transaction index. There is no fallback to eth_getTransactionByHash once a provider is set.
+// A backend must also be supplied with WithDownloadBackend.
+func WithTransactionProvider(provider types.TransactionProvider) BackfillOption {
+	return func(b *BackfillTxnSender) {
+		b.provider = provider
+	}
+}
+
+// WithDownloadBackend sets the multidownloader backend used to read the canonical bridge logs. It
+// is required together with WithTransactionProvider so the backfill never issues a direct
+// FilterLogs RPC to the node: the exact original log is read from the shared multidownloader and
+// passed to the transaction provider.
+func WithDownloadBackend(backend types.MultiDownloaderLegacy) BackfillOption {
+	return func(b *BackfillTxnSender) {
+		b.backend = backend
+	}
 }
 
 // NewBackfillTxnSender creates a new instance of BackfillTxnSender
@@ -42,20 +147,42 @@ func NewBackfillTxnSender(
 	bridgeAddr common.Address,
 	syncFromInBridges bool,
 	logger *log.Logger,
+	opts ...BackfillOption,
 ) (*BackfillTxnSender, error) {
+	backfiller := &BackfillTxnSender{
+		log:                   logger,
+		client:                client,
+		bridgeAddr:            bridgeAddr,
+		dbTimeout:             dbTimeout,
+		syncFromInBridges:     syncFromInBridges,
+		retryDelay:            defaultBackfillRetryDelay,
+		sleep:                 sleepWithContext,
+		maxConsecutiveRetries: backfillMaxConsecutiveRetries,
+	}
+	for _, opt := range opts {
+		opt(backfiller)
+	}
+	// Validate the options before opening the database so a misconfigured provider/backend pair does
+	// not leak a database handle.
+	if err := backfiller.validateConfiguration(); err != nil {
+		return nil, err
+	}
+
 	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
+	backfiller.db = database
+	return backfiller, nil
+}
 
-	return &BackfillTxnSender{
-		db:                database,
-		log:               logger,
-		client:            client,
-		bridgeAddr:        bridgeAddr,
-		dbTimeout:         dbTimeout,
-		syncFromInBridges: syncFromInBridges,
-	}, nil
+// validateConfiguration rejects option combinations that cannot work: a transaction provider always
+// needs the download backend that supplies the exact original logs.
+func (b *BackfillTxnSender) validateConfiguration() error {
+	if b.provider != nil && b.backend == nil {
+		return ErrBackfillBackendRequired
+	}
+	return nil
 }
 
 // BackfillAll processes bridge table to backfill txn_sender field
@@ -71,11 +198,29 @@ func (b *BackfillTxnSender) BackfillAll(ctx context.Context) error {
 	return nil
 }
 
-// backfillTable processes a specific table to backfill txn_sender field
+// backfillTable processes a specific table to backfill txn_sender field.
+//
+// Selection uses keyset pagination over the (block_num, block_pos) primary key: the cursor starts
+// unset and each page is fetched with a strict "greater than the last read key" predicate ordered
+// by (block_num, block_pos). This is bounded in SQL (no growing NOT IN list) and guarantees the run
+// makes forward progress even for a record whose from_address legitimately stays NULL and therefore
+// keeps matching the selection after its txn_sender is persisted.
+//
+// The loop is a cancellation-aware, bounded-backoff scheduler rather than a one-shot scan: a batch
+// whose records cannot be resolved *yet* (for example because the multidownloader has not covered
+// their blocks) is retried once coverage advances instead of abandoning the whole table after the
+// first failure. Successful updates are persisted by processBatch before it returns, so on a retry
+// the cursor is deliberately not advanced and only the failed rows are re-processed; the
+// successfully completed rows whose from_address stays NULL are skipped via the in-memory completed
+// set. This matters because the backfill job is started once at startup: without the retry the
+// historical rows would stay empty until the next process restart.
 //
 //nolint:unparam // tableName is kept for future extensibility
 func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string) error {
 	b.log.Infof("Starting backfill for %s table, syncFromInBridges: %v", tableName, b.syncFromInBridges)
+
+	// The completed set is scoped to this run and is not persisted.
+	b.completed = nil
 
 	// Get total count of records that need backfilling
 	totalCount, err := b.getRecordsNeedingBackfillCount(ctx, tableName)
@@ -89,33 +234,173 @@ func (b *BackfillTxnSender) backfillTable(ctx context.Context, tableName string)
 	}
 
 	b.log.Infof("Found %d records in %s table that need txn_sender or from_address backfilling", totalCount, tableName)
-	pending := totalCount
-	// Process records in batches
+
+	var backfilled int
+	// consecutiveRetries counts the retries of the *current* failing batch. It is reset as soon as
+	// a batch makes progress, so the bound applies to a sustained failure and not to the total
+	// number of retries across the whole table.
+	consecutiveRetries := 0
+	// cursor is the (block_num, block_pos) of the last record read in the previous page. A nil
+	// cursor selects from the beginning; the keyset predicate is strict (>) so a record is never
+	// read twice within a successful pass and the run always advances.
+	var cursor *recordKey
 	for {
 		// Check if context is cancelled before processing next batch
-		select {
-		case <-ctx.Done():
+		if err := ctx.Err(); err != nil {
 			b.log.Info("backfill process cancelled, stopping gracefully")
-			return ctx.Err()
-		default:
+			return err
 		}
 
-		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize)
+		records, err := b.getRecordsNeedingBackfill(ctx, tableName, batchSize, cursor)
 		if err != nil {
-			b.log.Errorf("failed to get records for backfilling: %w", err)
-			continue
+			return fmt.Errorf("failed to get records for backfilling: %w", err)
 		}
 		if len(records) == 0 {
 			break
 		}
 
-		b.processBatch(ctx, tableName, records)
-		pending -= len(records)
-		b.log.Infof("%d records remaining to backfill in %s table", pending, tableName)
+		// The page's upper bound is the last record READ, not the last record processed: a record
+		// whose from_address legitimately stays NULL is filtered out of the processing set below
+		// but must still advance the cursor so it is never re-selected.
+		lastRead := recordKey{
+			blockNum: records[len(records)-1].BlockNum,
+			blockPos: records[len(records)-1].BlockPos,
+		}
+
+		// Skip records already completed in this run: they only survive in the selection because
+		// their from_address stays NULL, and re-resolving them would duplicate work.
+		pending := make([]RecordToBackfill, 0, len(records))
+		for i := range records {
+			if b.isCompleted(records[i].BlockNum, records[i].BlockPos) {
+				continue
+			}
+			pending = append(pending, records[i])
+		}
+		if len(pending) == 0 {
+			// The whole page was already completed: advance and keep scanning instead of
+			// re-processing it.
+			cursor = &lastRead
+			continue
+		}
+
+		processed, batchErr := b.processBatch(ctx, tableName, pending)
+		backfilled += processed
+		if batchErr == nil {
+			consecutiveRetries = 0
+			cursor = &lastRead
+			b.log.Infof("backfilled %d records in %s table so far", backfilled, tableName)
+			continue
+		}
+
+		// Successful updates were already persisted by processBatch; the failed rows stay unchanged
+		// and are retried in place because the cursor is deliberately not advanced. Honour
+		// cancellation before scheduling a retry so a cancelled backfill never sleeps and never
+		// leaves a pending RPC behind.
+		if err := ctx.Err(); err != nil {
+			return batchErr
+		}
+
+		switch classifyBackfillBatchError(batchErr) {
+		case backfillBatchPermanent:
+			// Retrying the same records cannot succeed (for example a stale canonical inclusion):
+			// stop with a clear error instead of spinning on the same invalid data.
+			return fmt.Errorf("%d/%d records backfilled in %s before a permanent failure: %w",
+				processed, len(pending), tableName, batchErr)
+		case backfillBatchTransient:
+			consecutiveRetries++
+			if consecutiveRetries > b.maxConsecutiveRetries {
+				// Bounded retries exhausted for a transport/DB error: return a clear error rather
+				// than retrying forever. Coverage unavailability is handled below and is not capped.
+				return fmt.Errorf(
+					"%d/%d records backfilled in %s after %d consecutive failed attempts: %w",
+					processed, len(pending), tableName, consecutiveRetries-1, batchErr)
+			}
+		case backfillBatchUnavailable:
+			// The records are simply not covered yet. Retry without a fixed cap while the context
+			// is active so hour-long historical fills complete without a process restart.
+			consecutiveRetries++
+		}
+
+		delay := b.retryDelay(consecutiveRetries)
+		b.log.Warnf("backfill batch for %s failed (%d/%d records backfilled); retry %d in %s: %v",
+			tableName, processed, len(pending), consecutiveRetries, delay, batchErr)
+		if err := b.sleep(ctx, delay); err != nil {
+			return err
+		}
 	}
 
 	b.log.Infof("Completed backfilling for %s table", tableName)
 	return nil
+}
+
+// backfillBatchDisposition classifies a failed batch so backfillTable knows whether to retry and
+// how the retry should be bounded.
+type backfillBatchDisposition int
+
+const (
+	// backfillBatchPermanent means retrying the same records cannot succeed (for example a stale
+	// canonical inclusion): the backfill stops with a clear error instead of spinning.
+	backfillBatchPermanent backfillBatchDisposition = iota
+	// backfillBatchUnavailable means the records are simply not covered yet (the multidownloader
+	// history is still filling): retry without a fixed cap while the context is active.
+	backfillBatchUnavailable
+	// backfillBatchTransient means a retryable transport/DB error: retry with a bounded cap.
+	backfillBatchTransient
+)
+
+// classifyBackfillBatchError maps a batch error to its disposition. The coverage sentinel is
+// retried indefinitely (bounded only by the context) because the multidownloader can take hours to
+// fill history; the inclusion-mismatch sentinel is permanent because the same stale log can never
+// resolve; every other error is treated as a bounded transient retry.
+func classifyBackfillBatchError(err error) backfillBatchDisposition {
+	switch {
+	case errors.Is(err, types.ErrTransactionInclusionMismatch):
+		return backfillBatchPermanent
+	case errors.Is(err, types.ErrTransactionUnavailable):
+		return backfillBatchUnavailable
+	default:
+		return backfillBatchTransient
+	}
+}
+
+// defaultBackfillRetryDelay returns an exponentially growing delay capped at backfillRetryMaxDelay.
+// It uses the existing common retry policy shape (a growing delay with a maximum) without adding a
+// new operator-facing configuration knob.
+func defaultBackfillRetryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := backfillRetryBaseDelay
+	for i := 1; i < attempt; i++ {
+		if delay >= backfillRetryMaxDelay/2 {
+			return backfillRetryMaxDelay
+		}
+		delay *= 2
+	}
+	return delay
+}
+
+// sleepWithContext waits for d or until ctx is done, whichever comes first. It uses a single timer
+// (no goroutine per sleep) and always stops it, so a cancelled backfill returns promptly without
+// leaking a timer or leaving a pending RPC behind. A non-positive delay yields to the scheduler
+// through a non-blocking context check so a zero delay cannot busy-spin.
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			return nil
+		}
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // RecordToBackfill represents a record that needs txn_sender backfilling
@@ -196,26 +481,43 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfillCount(ctx context.Context, 
 	return count, nil
 }
 
-// getRecordsNeedingBackfill retrieves records that need txn_sender backfilling
+// getRecordsNeedingBackfill retrieves records that need txn_sender backfilling using keyset
+// pagination over the (block_num, block_pos) primary key. after, when non-nil, is the last key read
+// by the previous page: only records strictly greater than it are returned, ordered by
+// (block_num, block_pos). A nil after selects from the beginning (so a record at (0,0) is not
+// skipped). The result is bounded by limit and the query has no growing exclusion list.
 func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	ctx context.Context,
 	tableName string,
 	limit int,
+	after *recordKey,
 ) ([]RecordToBackfill, error) {
 	missingFieldsCond := b.missingFieldsCondition()
+	// The placeholders are positional (?) rather than numbered ($N) on purpose: SQLite treats $N
+	// as a *named* parameter whose index follows the order of first appearance, not the number
+	// written, so mixing $N with a predicate that appears before the LIMIT silently binds the
+	// arguments to the wrong parameters. Positional placeholders keep the binding unambiguous.
+	keysetCond := ""
+	args := []any{BridgeSourceBackwardLET, BridgeSourceForwardLET}
+	if after != nil {
+		keysetCond = "AND (block_num > ? OR (block_num = ? AND block_pos > ?))"
+		args = append(args, after.blockNum, after.blockNum, after.blockPos)
+	}
+	args = append(args, limit)
 	//nolint:gosec
 	query := fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		WHERE (%s)
-		AND (source IS NULL OR (source != $1 AND source != $2))
-		LIMIT $3
-	`, tableName, missingFieldsCond)
+		AND (source IS NULL OR (source != ? AND source != ?))
+		%s
+		ORDER BY block_num ASC, block_pos ASC
+		LIMIT ?
+	`, tableName, missingFieldsCond, keysetCond)
 
 	dbCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
 	defer cancel()
-	rows, err := b.db.QueryContext(dbCtx, query,
-		BridgeSourceBackwardLET, BridgeSourceForwardLET, limit)
+	rows, err := b.db.QueryContext(dbCtx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records needing backfill: %w", err)
 	}
@@ -232,12 +534,16 @@ func (b *BackfillTxnSender) getRecordsNeedingBackfill(
 	return records, nil
 }
 
-// processBatch processes a batch of records to backfill txn_sender using a worker pool
+// processBatch processes a batch of records to backfill txn_sender using a worker pool.
+// It returns the number of records whose update was successfully persisted and an aggregate error
+// describing the records that failed. Successful updates are persisted (bulkUpdate) before the
+// error is returned, so a caller can propagate the failure without losing the successful work and
+// without retrying the same failed rows forever.
 func (b *BackfillTxnSender) processBatch(
 	ctx context.Context,
 	tableName string,
 	records []RecordToBackfill,
-) {
+) (int, error) {
 	// Create channels for job distribution and result collection
 	jobChan := make(chan TxnSenderJob, len(records))
 	resultChan := make(chan TxnSenderResult, len(records))
@@ -270,10 +576,12 @@ func (b *BackfillTxnSender) processBatch(
 
 	// Collect results
 	updates := make([]RecordUpdate, 0, len(records))
+	var recordErrs []error
 	for result := range resultChan {
 		if result.Error != nil {
 			b.log.Errorf("Failed to extract txn_sender for tx %s: %v",
 				result.Update.String(), result.Error)
+			recordErrs = append(recordErrs, result.Error)
 			continue
 		}
 		updates = append(updates, result.Update)
@@ -283,7 +591,7 @@ func (b *BackfillTxnSender) processBatch(
 	select {
 	case <-ctx.Done():
 		b.log.Info("backfill process cancelled before bulk update, stopping gracefully")
-		return
+		return 0, ctx.Err()
 	default:
 	}
 
@@ -291,10 +599,25 @@ func (b *BackfillTxnSender) processBatch(
 	if len(updates) > 0 {
 		if err := b.bulkUpdate(ctx, tableName, updates); err != nil {
 			b.log.Errorf("Failed to bulk update txn_sender for %d records: %v", len(updates), err)
-		} else {
-			b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
+			return 0, fmt.Errorf("failed to bulk update txn_sender for %d records: %w", len(updates), err)
 		}
+		// The update is persisted: a record whose from_address legitimately stays NULL will still
+		// match missingFieldsCond, so mark it completed for this run. That keeps an in-place batch
+		// retry (same keyset cursor) from re-resolving it. Records whose from_address was written
+		// no longer match, and records that failed extraction are never marked, so they stay
+		// retryable.
+		for i := range updates {
+			if updates[i].FromAddr == nil {
+				b.markCompleted(updates[i].BlockNum, updates[i].BlockPos)
+			}
+		}
+		b.log.Infof("Successfully bulk updated txn_sender for %d records", len(updates))
 	}
+
+	if len(recordErrs) > 0 {
+		return len(updates), errors.Join(recordErrs...)
+	}
+	return len(updates), nil
 }
 
 // worker processes jobs from the job channel and sends results to the result channel
@@ -325,8 +648,18 @@ func (b *BackfillTxnSender) worker(
 			Metadata:           job.Record.Metadata,
 			Amount:             job.Record.Amount,
 		}
-		// Extract txn_sender from transaction hash
-		txnSender, fromAddr, toAddr, err := b.extractData(ctx, job.Record.TxHash, logEvent)
+		// Extract txn_sender: through the shared provider when configured, otherwise by hash.
+		var (
+			txnSender common.Address
+			fromAddr  *common.Address
+			toAddr    common.Address
+			err       error
+		)
+		if b.provider != nil {
+			txnSender, fromAddr, toAddr, err = b.extractDataViaProvider(ctx, job.Record, logEvent)
+		} else {
+			txnSender, fromAddr, toAddr, err = b.extractData(ctx, job.Record.TxHash, logEvent)
+		}
 
 		result := TxnSenderResult{
 			Update: RecordUpdate{
@@ -363,6 +696,93 @@ func (b *BackfillTxnSender) extractData(ctx context.Context,
 	txnSender, fromAddr, toAddr, err = ExtractTxnAddresses(ctx, b.client, b.bridgeAddr, txHash,
 		logEvent, b.log, b.syncFromInBridges)
 	return txnSender, fromAddr, toAddr, err
+}
+
+// extractDataViaProvider resolves the transaction through the shared multidownloader provider. It
+// looks up the exact original log of the record (so the provider can resolve the real transaction
+// index) and passes it to TransactionByLog. It never falls back to eth_getTransactionByHash: when
+// the log or the transaction is not covered by the provider a bounded, explicit error is returned.
+func (b *BackfillTxnSender) extractDataViaProvider(ctx context.Context,
+	record RecordToBackfill,
+	logEvent *agglayerbridge.AgglayerbridgeBridgeEvent) (txnSender common.Address,
+	fromAddr *common.Address, toAddr common.Address, err error) {
+	select {
+	case <-ctx.Done():
+		return common.Address{}, nil, common.Address{}, ctx.Err()
+	default:
+	}
+
+	log, err := b.findBridgeLogForRecord(ctx, record)
+	if err != nil {
+		return common.Address{}, nil, common.Address{}, err
+	}
+
+	tx, err := b.provider.TransactionByLog(ctx, *log)
+	if err != nil {
+		return common.Address{}, nil, common.Address{},
+			fmt.Errorf("backfill: failed to resolve transaction for block %d tx %s: %w",
+				record.BlockNum, record.TxHash.Hex(), err)
+	}
+	if tx == nil {
+		// Defensive: a provider must never signal "not covered yet" with a nil transaction and a
+		// nil error. Wrap it in the shared sentinel so callers retry once coverage advances.
+		return common.Address{}, nil, common.Address{},
+			fmt.Errorf("%w: transaction not covered by the multidownloader for block %d tx %s",
+				types.ErrTransactionUnavailable, record.BlockNum, record.TxHash.Hex())
+	}
+
+	return extractTxnAddressesWithTx(ctx, b.client, b.bridgeAddr, record.TxHash, tx, logEvent,
+		b.log, b.syncFromInBridges)
+}
+
+// findBridgeLogForRecord finds the exact bridge log emitted in the record's block for the record's
+// transaction. It reads the canonical logs from the configured download backend (never a direct RPC
+// FilterLogs) for a single block, and matches the BridgeEvent topic locally so a backend that does
+// not apply topic filters upstream cannot silently drop the log. The returned log carries the real
+// block hash, number, log index and transaction index so the provider can validate canonical
+// inclusion instead of relying on a synthesized log.
+func (b *BackfillTxnSender) findBridgeLogForRecord(
+	ctx context.Context, record RecordToBackfill,
+) (*coretypes.Log, error) {
+	if b.backend == nil {
+		return nil, fmt.Errorf("%w: no download backend configured for block %d tx %s",
+			types.ErrTransactionUnavailable, record.BlockNum, record.TxHash.Hex())
+	}
+
+	logQuery := mdrtypes.NewLogQuery(record.BlockNum, record.BlockNum, []common.Address{b.bridgeAddr})
+	if checker, ok := b.backend.(logAvailabilityChecker); ok && !checker.IsAvailable(logQuery) {
+		// The backend reports the range as not covered yet. Fail fast with the shared
+		// "unavailable" sentinel instead of blocking until the bounded request timeout.
+		return nil, fmt.Errorf("%w: bridge log block %d address %s is not covered yet",
+			types.ErrTransactionUnavailable, record.BlockNum, b.bridgeAddr.Hex())
+	}
+
+	// Query by range and address only: no topic filter is sent upstream. The BridgeEvent topic0 is
+	// matched locally below.
+	query := ethereum.FilterQuery{
+		FromBlock: new(big.Int).SetUint64(record.BlockNum),
+		ToBlock:   new(big.Int).SetUint64(record.BlockNum),
+		Addresses: []common.Address{b.bridgeAddr},
+	}
+	// Bound the request so an uncovered range can never hang the backfill forever.
+	reqCtx, cancel := context.WithTimeout(ctx, b.dbTimeout)
+	defer cancel()
+	logs, err := b.backend.FilterLogs(reqCtx, query)
+	if err != nil {
+		return nil, fmt.Errorf("backfill: failed to filter bridge logs for block %d: %w", record.BlockNum, err)
+	}
+	for i := range logs {
+		lg := logs[i]
+		if lg.TxHash != record.TxHash {
+			continue
+		}
+		if len(lg.Topics) == 0 || lg.Topics[0] != bridgeEventSignature {
+			continue
+		}
+		return &logs[i], nil
+	}
+	return nil, fmt.Errorf("%w: bridge log not found in block %d for tx %s",
+		types.ErrTransactionUnavailable, record.BlockNum, record.TxHash.Hex())
 }
 
 // bulkUpdate performs a bulk update of multiple records

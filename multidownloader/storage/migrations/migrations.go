@@ -15,6 +15,9 @@ var mig001 string
 //go:embed 0002.sql
 var mig002 string
 
+//go:embed 0003.sql
+var mig003 string
+
 var Migrations = []types.Migration{
 	{
 		ID:  "0001",
@@ -23,6 +26,10 @@ var Migrations = []types.Migration{
 	{
 		ID:  "0002",
 		SQL: mig002,
+	},
+	{
+		ID:  "0003",
+		SQL: mig003,
 	},
 }
 

@@ -297,7 +297,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 			common.HexToHash("0x1234"),
 			common.HexToHash("0x5678"),
 			"test reorg at genesis")
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 		require.Error(t, err)
 	})
 	t.Run("returns error when NewTx fails", func(t *testing.T) {
@@ -320,7 +320,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 
 		mockPort.EXPECT().NewTx(ctx).Return(nil, expectedErr).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error starting new tx")
@@ -352,7 +352,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 			Return(nil, expectedErr).Once()
 		mockTx.EXPECT().Rollback().Return(nil).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error finding first unaffected block")
@@ -410,9 +410,11 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 
 		mockTx.EXPECT().Commit().Return(nil).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		firstReorgedBlock, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.NoError(t, err)
+		// Block 104 (offending-1) matches, so the rollback starts at the offending block.
+		require.Equal(t, offendingBlockNumber, firstReorgedBlock)
 		mockPort.AssertExpectations(t)
 	})
 
@@ -453,7 +455,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		mockPort.EXPECT().GetLastBlockNumberInStorage(mockTx).Return(uint64(0), expectedErr).Once()
 		mockTx.EXPECT().Rollback().Return(nil).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error getting last block number in storage")
@@ -501,7 +503,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		mockPort.EXPECT().MoveReorgedBlocks(mockTx, mock.Anything).Return(uint64(0), expectedErr).Once()
 		mockTx.EXPECT().Rollback().Return(nil).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error moving reorged blocks")
@@ -547,7 +549,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.LatestBlock).Return(uint64(0), expectedErr).Once()
 		mockTx.EXPECT().Rollback().Return(nil).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error getting latest block number in RPC")
@@ -594,7 +596,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock).Return(uint64(0), expectedErr).Once()
 		mockTx.EXPECT().Rollback().Return(nil).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error getting finalized block number in RPC")
@@ -644,7 +646,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 		mockPort.EXPECT().MoveReorgedBlocks(mockTx, mock.Anything).Return(chainID, nil).Once()
 		mockTx.EXPECT().Commit().Return(expectedErr).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cannot commit tx")
@@ -713,7 +715,7 @@ func TestReorgProcessor_ProcessReorg(t *testing.T) {
 			Return(nil, originalErr).Once()
 		mockTx.EXPECT().Rollback().Return(rollbackErr).Once()
 
-		err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+		_, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "error finding first unaffected block")
@@ -797,8 +799,11 @@ func TestReorgProcessor_ReorgMissingBlock(t *testing.T) {
 	mockPort.EXPECT().GetBlockNumberInRPC(ctx, aggkittypes.FinalizedBlock).Return(uint64(90), nil).Once()
 	mockPort.EXPECT().MoveReorgedBlocks(mockTx, mock.Anything).Return(uint64(1), nil).Once()
 	mockTx.EXPECT().Commit().Return(nil).Once()
-	err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+	firstReorgedBlock, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 	require.NoError(t, err)
+	// The reorg was detected at block 100 but block 99 is also affected: the
+	// rollback boundary returned is the block after the common ancestor (98).
+	require.Equal(t, uint64(99), firstReorgedBlock)
 }
 
 func testForcedReorg(t *testing.T, developerMode bool, expectedReorgStartBlock uint64) {
@@ -876,9 +881,10 @@ func testForcedReorg(t *testing.T, developerMode bool, expectedReorgStartBlock u
 	mockPort.EXPECT().MoveReorgedBlocks(mockTx, expectedReorgData).Return(uint64(1), nil).Once()
 	mockTx.EXPECT().Commit().Return(nil).Once()
 
-	err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
+	firstReorgedBlock, err := processor.ProcessReorg(ctx, *reorgErr, aggkittypes.FinalizedBlock)
 
 	require.NoError(t, err)
+	require.Equal(t, expectedReorgStartBlock, firstReorgedBlock)
 	mockPort.AssertExpectations(t)
 	mockTx.AssertExpectations(t)
 }

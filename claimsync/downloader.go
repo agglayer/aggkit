@@ -109,25 +109,54 @@ type bridgeDeployment struct {
 	agglayerBridgeL2 *agglayerbridgel2.Agglayerbridgel2
 }
 
-// buildAppender creates the LogAppenderMap for claim events from the bridge contract.
+// buildAppender creates the appenders for claim events from the bridge contract. The handlers that
+// trace the claim transaction (ClaimEvent and pre-Etrog ClaimEvent, through debug_traceTransaction) are
+// returned in the contextual map so they run with the active download context: a cancelled download
+// generation, which the driver joins before a rollback, must never stay blocked on a stalled trace. The
+// other handlers are synchronous and are returned in the legacy map.
+// It is the legacy synchronous path: the ordinary/pre-Etrog handlers resolve their
+// root call with a per-log debug_traceTransaction call.
 func buildAppender(
 	ethClient aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	deployment *bridgeDeployment,
 	log aggkitcommon.Logger,
-) (sync.LogAppenderMap, error) {
+) (sync.LogAppenderMap, sync.ContextualLogAppenderMap, error) {
+	return buildAppenderWithResolver(ethClient, bridgeAddr, deployment, log, nil)
+}
+
+// buildAppenderWithResolver is buildAppender with an optional TraceResolver. A nil
+// resolver preserves the legacy synchronous path exactly; a non-nil resolver makes
+// the ordinary/pre-Etrog handlers resolve their root call from the prefetched
+// snapshot for the exact original log (the detailed handler never traces).
+func buildAppenderWithResolver(
+	ethClient aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	deployment *bridgeDeployment,
+	log aggkitcommon.Logger,
+	resolver *TraceResolver,
+) (sync.LogAppenderMap, sync.ContextualLogAppenderMap, error) {
 	legacyBridge, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, ethClient)
 	if err != nil {
-		return nil, fmt.Errorf("claimsync: failed to create PolygonZkEVMBridge binding: %w", err)
+		return nil, nil, fmt.Errorf("claimsync: failed to create PolygonZkEVMBridge binding: %w", err)
 	}
 	// TODO: Check syncfullclaims
 	syncFullClaims := true
-	appender := make(sync.LogAppenderMap)
-	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
-		legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	contextual := make(sync.ContextualLogAppenderMap)
+	if resolver == nil {
+		// Legacy synchronous path: use the legacy wrapper constructors verbatim.
+		contextual[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
+			legacyBridge, ethClient, bridgeAddr, syncFullClaims, log)
+		contextual[claimEventSignature] = buildClaimEventHandler(
+			deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	} else {
+		contextual[claimEventSignaturePreEtrog] = newClaimEventHandlerPreEtrog(
+			legacyBridge, ethClient, bridgeAddr, syncFullClaims, log, resolver)
+		contextual[claimEventSignature] = newClaimEventHandler(
+			deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log, resolver)
+	}
 
-	appender[claimEventSignature] = buildClaimEventHandler(
-		deployment.agglayerBridge, ethClient, bridgeAddr, syncFullClaims, log)
+	appender := make(sync.LogAppenderMap)
 
 	appender[detailedClaimEventSignature] = buildDetailedClaimEventHandler(deployment.agglayerBridgeL2)
 	appender[unsetClaimEventSignature] = buildUnsetClaimEventHandler(deployment.agglayerBridgeL2)
@@ -141,7 +170,7 @@ func buildAppender(
 	log.Debugf("unsetClaimEventSignature:            %s", unsetClaimEventSignature.Hex())
 	log.Debugf("setClaimEventSignature:              %s", setClaimEventSignature.Hex())
 
-	return appender, nil
+	return appender, contextual, nil
 }
 
 // resolveBridgeDeployment resolves which bridge contract flavor is deployed:
@@ -215,15 +244,30 @@ func buildOutdatedContractWarningHandler(
 	}
 }
 
-// buildClaimEventHandler creates a handler for the ClaimEvent log.
+// buildClaimEventHandler creates a handler for the ClaimEvent log using the
+// legacy synchronous root call extraction.
 func buildClaimEventHandler(
 	contract *agglayerbridge.Agglayerbridge,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	log aggkitcommon.Logger,
-) func(*sync.EVMBlock, types.Log) error {
-	return func(b *sync.EVMBlock, l types.Log) error {
+) sync.ContextualLogAppender {
+	return newClaimEventHandler(contract, client, bridgeAddr, syncFullClaims, log, nil)
+}
+
+// newClaimEventHandler creates a handler for the ClaimEvent log. When resolver is
+// non-nil the root call is resolved from the prefetched snapshot for the exact
+// original log; otherwise the legacy synchronous extraction is used.
+func newClaimEventHandler(
+	contract *agglayerbridge.Agglayerbridge,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	syncFullClaims bool,
+	log aggkitcommon.Logger,
+	resolver *TraceResolver,
+) sync.ContextualLogAppender {
+	return func(ctx context.Context, b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("claimsync: error parsing ClaimEvent log: %w", err)
@@ -243,7 +287,7 @@ func buildClaimEventHandler(
 		}
 
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, log, nil)
+		_, rootCall, err := extractCallDataFromLog(ctx, client, resolver, bridgeAddr, l, log)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -309,15 +353,30 @@ func buildDetailedClaimEventHandler(
 	}
 }
 
-// buildClaimEventHandlerPreEtrog creates a handler for the pre-Etrog ClaimEvent log.
+// buildClaimEventHandlerPreEtrog creates a handler for the pre-Etrog ClaimEvent log
+// using the legacy synchronous root call extraction.
 func buildClaimEventHandlerPreEtrog(
 	contract *polygonzkevmbridge.Polygonzkevmbridge,
 	client aggkittypes.EthClienter,
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	logger aggkitcommon.Logger,
-) func(*sync.EVMBlock, types.Log) error {
-	return func(b *sync.EVMBlock, l types.Log) error {
+) sync.ContextualLogAppender {
+	return newClaimEventHandlerPreEtrog(contract, client, bridgeAddr, syncFullClaims, logger, nil)
+}
+
+// newClaimEventHandlerPreEtrog creates a handler for the pre-Etrog ClaimEvent log.
+// When resolver is non-nil the root call is resolved from the prefetched snapshot
+// for the exact original log; otherwise the legacy synchronous extraction is used.
+func newClaimEventHandlerPreEtrog(
+	contract *polygonzkevmbridge.Polygonzkevmbridge,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	syncFullClaims bool,
+	logger aggkitcommon.Logger,
+	resolver *TraceResolver,
+) sync.ContextualLogAppender {
+	return func(ctx context.Context, b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
 			return fmt.Errorf("claimsync: error parsing pre-Etrog ClaimEvent log: %w", err)
@@ -336,7 +395,7 @@ func buildClaimEventHandlerPreEtrog(
 			Amount:             claimEvent.Amount,
 		}
 		// Extract root call for txn_sender and error checking
-		_, rootCall, err := extractCallData(client, bridgeAddr, l.TxHash, logger, nil)
+		_, rootCall, err := extractCallDataFromLog(ctx, client, resolver, bridgeAddr, l, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract claim event tx sender (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -492,18 +551,20 @@ func findCall(rootCall Call,
 	return nil, db.ErrNotFound
 }
 
-// extractRootCall extracts the root call for a transaction using debug_traceTransaction.
-func extractRootCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*Call, error) {
+// extractRootCall extracts the root call for a transaction using debug_traceTransaction. The call is
+// bound to ctx so a cancelled download generation never stays blocked on a stalled trace.
+func extractRootCall(ctx context.Context, client aggkittypes.RPCClienter, contractAddr common.Address,
+	txHash common.Hash) (*Call, error) {
 	rootCall := &Call{To: contractAddr}
-	err := client.Call(rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
+	err := client.CallContext(ctx, rootCall, DebugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
 	return rootCall, nil
 }
 
-//nolint:unparam // foundCalls is part of the public API and may be used by callers
 func extractCallData(
+	ctx context.Context,
 	client aggkittypes.RPCClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
@@ -511,13 +572,46 @@ func extractCallData(
 	callback func(c Call) (bool, error),
 ) (foundCalls []*Call, rootCall *Call, err error) {
 	// Extract root call first
-	rootCall, err = extractRootCall(client, bridgeAddr, txHash)
+	rootCall, err = extractRootCall(ctx, client, bridgeAddr, txHash)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Find the specific call to the bridge contract
 	foundCalls, err = findCall(*rootCall, bridgeAddr, callback, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return foundCalls, rootCall, nil
+}
+
+// extractCallDataFromLog preserves the exact legacy extractCallData semantics: it
+// resolves the root call (from the prefetched snapshot when resolver is set,
+// otherwise synchronously through debug_traceTransaction) and then finds the
+// bridge call in it. The prefetched path resolves by the exact original log; a
+// missing snapshot entry is reported as an explicit error, never as a nil success
+// and never by falling back to a stale root call.
+//
+//nolint:unparam // foundCalls is part of the established extractCallData signature
+func extractCallDataFromLog(
+	ctx context.Context,
+	client aggkittypes.RPCClienter,
+	resolver *TraceResolver,
+	bridgeAddr common.Address,
+	l types.Log,
+	logger aggkitcommon.Logger,
+) (foundCalls []*Call, rootCall *Call, err error) {
+	if resolver != nil {
+		rootCall, err = resolver.ResolveRoot(l)
+	} else {
+		rootCall, err = extractRootCall(ctx, client, bridgeAddr, l.TxHash)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	foundCalls, err = findCall(*rootCall, bridgeAddr, nil, logger)
 	if err != nil {
 		return nil, nil, err
 	}
