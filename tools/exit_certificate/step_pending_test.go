@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/agglayer/aggkit/tools/exit_certificate/bridgesyncerlite"
@@ -30,7 +31,7 @@ func TestSelectPendingCandidates(t *testing.T) {
 
 	bridges := []bridgesyncerlite.BridgeLeaf{
 		pendingTestLeaf(3, 0, 0), // asset to L1 → candidate
-		pendingTestLeaf(1, 1, 0), // message to L1 → candidate
+		pendingTestLeaf(1, 1, 0), // message to L1 → candidate only with messages
 		pendingTestLeaf(2, 0, 2), // asset to another network → skipped
 		pendingTestLeaf(0, 0, 0), // asset to L1 → candidate
 		pendingTestLeaf(4, 1, 2), // message to another network → skipped
@@ -39,21 +40,37 @@ func TestSelectPendingCandidates(t *testing.T) {
 		pendingTestLeaf(7, 0, 0), // certificate exit → skipped
 	}
 
-	candidates, err := selectPendingCandidates(bridges, 2)
-	require.NoError(t, err)
-	require.Len(t, candidates, 3)
-	// Ordered by deposit count, whatever the input order.
-	require.Equal(t, uint32(0), candidates[0].DepositCount)
-	require.Equal(t, uint32(1), candidates[1].DepositCount)
-	require.Equal(t, pendingLeafTypeMessage, candidates[1].LeafType)
-	require.Equal(t, []byte{1}, []byte(candidates[1].Metadata))
-	require.Equal(t, uint32(3), candidates[2].DepositCount)
-	require.Equal(t, pendingLeafTypeAsset, candidates[2].LeafType)
-	require.Equal(t, big.NewInt(103), candidates[2].Amount)
-	require.Equal(t, []byte{3}, []byte(candidates[2].Metadata))
-	require.Equal(t, 1, countPendingMessages(candidates))
+	t.Run("assets only (default)", func(t *testing.T) {
+		t.Parallel()
+		candidates, err := selectPendingCandidates(bridges, 2, false)
+		require.NoError(t, err)
+		require.Len(t, candidates, 2)
+		require.Equal(t, uint32(0), candidates[0].DepositCount)
+		require.Equal(t, uint32(3), candidates[1].DepositCount)
+		for _, c := range candidates {
+			require.Equal(t, pendingLeafTypeAsset, c.LeafType)
+		}
+		require.Equal(t, 0, countPendingMessages(candidates))
+	})
 
-	_, err = selectPendingCandidates(bridges, uint64(len(bridges))+1)
+	t.Run("assets and messages", func(t *testing.T) {
+		t.Parallel()
+		candidates, err := selectPendingCandidates(bridges, 2, true)
+		require.NoError(t, err)
+		require.Len(t, candidates, 3)
+		// Ordered by deposit count, whatever the input order.
+		require.Equal(t, uint32(0), candidates[0].DepositCount)
+		require.Equal(t, uint32(1), candidates[1].DepositCount)
+		require.Equal(t, pendingLeafTypeMessage, candidates[1].LeafType)
+		require.Equal(t, []byte{1}, []byte(candidates[1].Metadata))
+		require.Equal(t, uint32(3), candidates[2].DepositCount)
+		require.Equal(t, pendingLeafTypeAsset, candidates[2].LeafType)
+		require.Equal(t, big.NewInt(103), candidates[2].Amount)
+		require.Equal(t, []byte{3}, []byte(candidates[2].Metadata))
+		require.Equal(t, 1, countPendingMessages(candidates))
+	})
+
+	_, err := selectPendingCandidates(bridges, uint64(len(bridges))+1, false)
 	require.ErrorContains(t, err, "run step g first")
 }
 
@@ -69,51 +86,83 @@ func TestFilterPendingBridges(t *testing.T) {
 
 func TestRunStepPending(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), fileStepGLiteDB)
-	syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: dbPath}, nil)
-	require.NoError(t, err)
-	// 0 and 3 are pre-certificate assets to L1, 1 is a pre-certificate message to L1, 2 goes to
-	// another network and 4 is the certificate's only exit.
-	require.NoError(t, syncer.StoreBridges(ctx, []bridgesyncerlite.BridgeLeaf{
-		pendingTestLeaf(0, 0, 0), pendingTestLeaf(1, 1, 0), pendingTestLeaf(2, 0, 2),
-		pendingTestLeaf(3, 0, 0), pendingTestLeaf(4, 0, 0),
-	}))
-	require.NoError(t, syncer.Close())
+	// newPendingRun writes a lite DB where 0 and 3 are pre-certificate assets to L1, 1 is a pre-certificate
+	// message to L1, 2 goes to another network and 4 is the certificate's only exit, and an L1 RPC where
+	// deposit 0 is claimed. It returns the DB path and a config whose isClaimed calls are checked.
+	newPendingRun := func(t *testing.T, withMessages bool) (string, *Config, *[]uint64) {
+		t.Helper()
+		ctx := context.Background()
+		dbPath := filepath.Join(t.TempDir(), fileStepGLiteDB)
+		syncer, err := bridgesyncerlite.New(ctx, bridgesyncerlite.Config{DBPath: dbPath}, nil)
+		require.NoError(t, err)
+		require.NoError(t, syncer.StoreBridges(ctx, []bridgesyncerlite.BridgeLeaf{
+			pendingTestLeaf(0, 0, 0), pendingTestLeaf(1, 1, 0), pendingTestLeaf(2, 0, 2),
+			pendingTestLeaf(3, 0, 0), pendingTestLeaf(4, 0, 0),
+		}))
+		require.NoError(t, syncer.Close())
 
-	// Deposit 0 is claimed; the isClaimed call must use the L2 network id as sourceBridgeNetwork.
-	const l2NetworkID = 7
-	url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
-		require.Equal(t, rpcMethodEthCall, method)
-		var call struct {
-			To   string `json:"to"`
-			Data string `json:"data"`
+		// The isClaimed call must use the L2 network id as sourceBridgeNetwork.
+		const l2NetworkID = 7
+		var mu sync.Mutex
+		asked := make([]uint64, 0)
+		url := newBatchRPCServer(t, func(method string, params []json.RawMessage) any {
+			require.Equal(t, rpcMethodEthCall, method)
+			var call struct {
+				To   string `json:"to"`
+				Data string `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(params[0], &call))
+			require.Equal(t, common.HexToAddress("0xb1").Hex(), common.HexToAddress(call.To).Hex())
+			raw := common.FromHex(call.Data)
+			require.Equal(t, uint64(l2NetworkID), new(big.Int).SetBytes(raw[36:68]).Uint64())
+			depositCount := new(big.Int).SetBytes(raw[4:36]).Uint64()
+			mu.Lock()
+			asked = append(asked, depositCount)
+			mu.Unlock()
+			if depositCount == 0 {
+				return "0x0000000000000000000000000000000000000000000000000000000000000001"
+			}
+			return "0x0000000000000000000000000000000000000000000000000000000000000000"
+		})
+		cfg := &Config{
+			L1RPCURL: url, L1BridgeAddress: common.HexToAddress("0xb1"), L2NetworkID: l2NetworkID,
+			Options: Options{RPCBatchSize: 10, ConcurrencyLimit: 2, PendingClaimMessages: withMessages},
 		}
-		require.NoError(t, json.Unmarshal(params[0], &call))
-		require.Equal(t, common.HexToAddress("0xb1").Hex(), common.HexToAddress(call.To).Hex())
-		raw := common.FromHex(call.Data)
-		require.Equal(t, uint64(l2NetworkID), new(big.Int).SetBytes(raw[36:68]).Uint64())
-		if new(big.Int).SetBytes(raw[4:36]).Uint64() == 0 {
-			return "0x0000000000000000000000000000000000000000000000000000000000000001"
-		}
-		return "0x0000000000000000000000000000000000000000000000000000000000000000"
-	})
-	cfg := &Config{
-		L1RPCURL: url, L1BridgeAddress: common.HexToAddress("0xb1"), L2NetworkID: l2NetworkID,
-		Options: Options{RPCBatchSize: 10, ConcurrencyLimit: 2},
+		return dbPath, cfg, &asked
 	}
 
-	pending, err := RunStepPending(ctx, cfg, dbPath, &StepGResult{BridgeExitCount: 1})
-	require.NoError(t, err)
-	// The unclaimed message (1) is kept along with the unclaimed asset (3); isClaimed is asked for both.
-	require.Len(t, pending, 2)
-	require.Equal(t, uint32(1), pending[0].DepositCount)
-	require.Equal(t, pendingLeafTypeMessage, pending[0].LeafType)
-	require.Equal(t, []byte{1}, []byte(pending[0].Metadata))
-	require.Equal(t, uint32(3), pending[1].DepositCount)
-	require.Equal(t, common.HexToAddress("0xd1"), pending[1].DestinationAddress)
-	require.Equal(t, big.NewInt(103), pending[1].Amount)
+	t.Run("assets only (default)", func(t *testing.T) {
+		t.Parallel()
+		dbPath, cfg, asked := newPendingRun(t, false)
+
+		pending, err := RunStepPending(context.Background(), cfg, dbPath, &StepGResult{BridgeExitCount: 1})
+		require.NoError(t, err)
+		// The message (1) is not listed, nor asked to L1: only the unclaimed asset (3) is pending.
+		require.Len(t, pending, 1)
+		require.Equal(t, uint32(3), pending[0].DepositCount)
+		require.Equal(t, pendingLeafTypeAsset, pending[0].LeafType)
+		require.Equal(t, common.HexToAddress("0xd1"), pending[0].DestinationAddress)
+		require.Equal(t, big.NewInt(103), pending[0].Amount)
+		require.ElementsMatch(t, []uint64{0, 3}, *asked)
+	})
+
+	t.Run("assets and messages", func(t *testing.T) {
+		t.Parallel()
+		dbPath, cfg, asked := newPendingRun(t, true)
+
+		pending, err := RunStepPending(context.Background(), cfg, dbPath, &StepGResult{BridgeExitCount: 1})
+		require.NoError(t, err)
+		// The unclaimed message (1) is kept along with the unclaimed asset (3); isClaimed is asked for both.
+		require.Len(t, pending, 2)
+		require.Equal(t, uint32(1), pending[0].DepositCount)
+		require.Equal(t, pendingLeafTypeMessage, pending[0].LeafType)
+		require.Equal(t, []byte{1}, []byte(pending[0].Metadata))
+		require.Equal(t, uint32(3), pending[1].DepositCount)
+		require.Equal(t, common.HexToAddress("0xd1"), pending[1].DestinationAddress)
+		require.Equal(t, big.NewInt(103), pending[1].Amount)
+		require.ElementsMatch(t, []uint64{0, 1, 3}, *asked)
+	})
 }
 
 func TestRunStepPendingInvalidIsClaimedResult(t *testing.T) {

@@ -294,3 +294,31 @@ func TestRunAllStepEFull(t *testing.T) {
 	require.NotNil(t, out)
 	require.True(t, fileExists(filepath.Join(dir, fileStepEUnclaimedBridges)))
 }
+
+// --pending-claim-messages overrides options.pendingClaimMessages only when it is given.
+func TestApplyCLIOverridesPendingClaimMessages(t *testing.T) {
+	t.Parallel()
+
+	newCtx := func(args ...string) *cli.Context {
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		fs.Bool(FlagPendingClaimMessages, false, "")
+		require.NoError(t, fs.Parse(args))
+		return cli.NewContext(nil, fs, nil)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		config bool
+		args   []string
+		want   bool
+	}{
+		{"flag absent keeps the default (off)", false, nil, false},
+		{"flag absent keeps the config (on)", true, nil, true},
+		{"flag turns it on", false, []string{"--" + FlagPendingClaimMessages}, true},
+		{"flag=false turns it off", true, []string{"--" + FlagPendingClaimMessages + "=false"}, false},
+	} {
+		cfg := &Config{Options: Options{PendingClaimMessages: tc.config}}
+		applyCLIOverrides(newCtx(tc.args...), cfg)
+		require.Equal(t, tc.want, cfg.Options.PendingClaimMessages, tc.name)
+	}
+}

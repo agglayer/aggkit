@@ -69,6 +69,11 @@ type Options struct {
 	// IgnoreUnclaimed skips adding unclaimed L1→L2 deposits to the certificate in Step E.
 	// The step still detects and warns about any unclaimed deposits, but the certificate is left unchanged.
 	IgnoreUnclaimed bool `json:"ignoreUnclaimed"`
+	// PendingClaimMessages, when true, makes Step PENDING_CLAIMS also list the unclaimed L2→L1 message
+	// bridges (leaf_type=1, claimed with claimMessage) emitted before the certificate, along with the
+	// assets. Defaults to false: assets only, as in the first mainnet run. The --pending-claim-messages
+	// CLI flag overrides it.
+	PendingClaimMessages bool `json:"pendingClaimMessages"`
 	// ExtraERC20Contracts is an optional list of ERC-20 contract addresses whose token holders
 	// are decomposed in Step B3. Step A includes these contracts in its Transfer-log scan so even
 	// passive holders (no ETH/nonce/code) are discovered; Step B3 then queries each contract with
@@ -621,6 +626,9 @@ func mergeFlagOptions(opts *Options, raw *rawOpts) {
 	if raw.IgnoreUnclaimed != nil {
 		opts.IgnoreUnclaimed = *raw.IgnoreUnclaimed
 	}
+	if raw.PendingClaimMessages != nil {
+		opts.PendingClaimMessages = *raw.PendingClaimMessages
+	}
 	if raw.IgnoreUnsupportedL2Events != nil {
 		opts.IgnoreUnsupportedL2Events = *raw.IgnoreUnsupportedL2Events
 	}
@@ -696,6 +704,7 @@ type rawOpts struct {
 	SkipSCLockedValue                     *bool                  `json:"skipSCLockedValue"`
 	IgnoreBalanceMismatch                 *bool                  `json:"ignoreBalanceMismatch"`
 	IgnoreUnclaimed                       *bool                  `json:"ignoreUnclaimed"`
+	PendingClaimMessages                  *bool                  `json:"pendingClaimMessages"`
 	ExtraERC20Contracts                   []string               `json:"extraErc20Contracts"`
 	CapMode                               string                 `json:"capMode"`
 	GenesisPrefundETHWei                  string                 `json:"genesisPrefundETHWei"`

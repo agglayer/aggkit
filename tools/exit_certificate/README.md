@@ -127,6 +127,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `capMode` | `"none"` | Selects how Step F allocates each token's cap budget when it needs to trim exits. `"none"` (default) forbids capping entirely: Step F fails if any exit would have to be trimmed — including the genesis pre-fund trim, so `genesisPrefundETHWei` requires a trimming mode. `"amount"` serves the smallest-amount exits first, so the largest holders are the first to be capped/dropped once the budget runs out; `"appearance"` serves exits in the order they appear. In both trimming modes the surviving exits are emitted in their original order. Any other value is rejected by `LoadConfig`. |
 | `genesisPrefundETHWei` | `""` | Optional amount of native token (in Wei, as a decimal string) pre-funded at genesis. Those funds sit in accounts — and therefore in the certificate's bridge exits — without a matching agglayer deposit, so Step F subtracts this value from the native-token certificate sum before comparing it against the agglayer balance and the LBT (which only count genuinely bridged funds), logging the certificate total, the pre-fund and the difference. The cap budget stays `min(agglayer, lbt)`, and the Step 0 LBT and Step C SC-locked totals are untouched. The pre-funded amount has no agglayer collateral, so even when the checks match Step F emits `step-f-capped-certificate.json` trimming the native exits to that budget (see [Step F](#step-f--agglayer-token-balance-verification)). Validated by `LoadConfig` (non-negative base-10 integer). When set, Step B additionally verifies that the declared value equals the detected genesis ETH preload total and errors on mismatch — this error is **not** suppressed by `ignoreGenesisBalance` (a wrong declaration would make the Step F subtraction silently wrong). Example: `100000` ETH = `"100000000000000000000000"`. |
 | `ignoreUnclaimed` | `false` | When `true`, Step E detects and logs unclaimed deposits but leaves the certificate unchanged. When `false` (default), any unclaimed asset deposit causes the pipeline to error. |
+| `pendingClaimMessages` | `false` | When `true`, the [PENDING_CLAIMS step](#step-pending_claims--unclaimed-l2l1-bridges-emitted-before-the-certificate) also lists the unclaimed pre-certificate L2→L1 **messages** (`leaf_type=1`, claimed with `claimMessage`), along with the assets. Off by default: assets only, the output of the first mainnet run. The `--pending-claim-messages` CLI flag overrides it. |
 | `bridgeServiceURL` | `""` | Base URL of the bridge service REST API. When set, Step E cross-checks its unclaimed deposit set against the bridge service and returns an error on any discrepancy. |
 | `bridgeServiceType` | `"aggkit"` | Bridge service API flavour. `"aggkit"` uses `GET /bridge/v1/bridges` (aggkit bridge service); `"zkevm"` uses `GET /pending-bridges` (zkevm-bridge-service). |
 | `extraErc20Contracts` | `[]` | Optional list of ERC-20 contract addresses to decompose into individual holder balances in Step B3. Step A includes these contracts in its `Transfer`-log scan so even passive holders (no ETH/nonce/code) are discovered; Step B3 then calls `balanceOf` for every EOA collected in Step A. Example: `["0xAbc...123", "0xDef...456"]`. |
@@ -548,13 +549,20 @@ certificate's `new_local_exit_root`. This step lists them so the claimer can ser
 
 1. Reads every leaf of `step-g-l2bridgesyncerlite.sqlite` and drops the last `bridgeExitCount` ones
    (`step-g-new-local-exit-root.json`): those are the certificate's own exits.
-2. Keeps the assets (`leaf_type=0`) and the messages (`leaf_type=1`) destined to L1
-   (`destination_network=0`). A message is claimed with `claimMessage`: the claimer serves it through its
-   API (`/claimer/v2`).
+2. Keeps the assets (`leaf_type=0`) destined to L1 (`destination_network=0`) and, **only with
+   `options.pendingClaimMessages=true` or `--pending-claim-messages`**, the messages (`leaf_type=1`) too. A
+   message is claimed with `claimMessage`: the claimer serves it through its API (`/claimer/v2`). The option
+   is off by default so the step keeps the output of the first mainnet run (assets only); the log says which
+   mode was used.
 3. Calls `isClaimed(depositCount, l2NetworkId)` on `l1BridgeAddress` through `l1RpcUrl` and keeps the
    unclaimed ones (`claimAsset` and `claimMessage` share the same claimed bitmap).
 
 Requires `l1RpcUrl` and `l1BridgeAddress` (it defaults to `l2BridgeAddress`), and the Step G output in the output directory.
+
+```bash
+exit_certificate --config parameters.toml --step pending_claims                           # assets only
+exit_certificate --config parameters.toml --step pending_claims --pending-claim-messages  # assets + messages
+```
 
 **Output:** `step-pending-l2-bridges.json` (`[]PendingBridge`: `depositCount`, `blockNumber`, `leafType`, origin and destination, `amount`, raw `metadata`, `txHash`). The claimer adds them to `/bridges` and `/claim-params` when the file exists.
 

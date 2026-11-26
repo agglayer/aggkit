@@ -44,7 +44,7 @@ deposit count and global index.
 > `beneficiary`, `decoded_amount` and `display_token`.
 
 > **Pending pre-certificate bridges.** The certificate only lists the exits made at the target block.
-> L2→L1 bridges (assets and messages) emitted earlier and never claimed on L1 are not in it, but their leaves are in
+> L2→L1 bridges (assets and, when that step ran with `pendingClaimMessages`, messages) emitted earlier and never claimed on L1 are not in it, but their leaves are in
 > the local exit tree. When `pendingBridgesPath` points to the exit_certificate
 > [PENDING_CLAIMS step](../exit_certificate/README.md#step-pending_claims--unclaimed-l2l1-bridges-emitted-before-the-certificate)
 > output (`step-pending-l2-bridges.json`), `/bridges` and `/claim-params` also return them, after the

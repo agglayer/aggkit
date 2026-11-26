@@ -38,15 +38,17 @@ type PendingBridge struct {
 	TxHash             common.Hash    `json:"txHash"`
 }
 
-// RunStepPending lists the L2→L1 bridges (assets and messages) emitted before the exit certificate
-// that are still unclaimed on L1.
+// RunStepPending lists the L2→L1 bridges emitted before the exit certificate that are still unclaimed
+// on L1: the assets and, only with options.pendingClaimMessages, the messages.
 //
 // Approach:
 //  1. Read every leaf of the local exit tree DB written by Step G2 (genesis→targetBlock bridges
 //     followed by the certificate's exits). The last gResult.BridgeExitCount leaves belong to the
 //     certificate and are skipped: the claimer already serves them.
-//  2. Keep the assets (leaf_type=0) and messages (leaf_type=1) destined to L1 (destination_network=0).
-//     A message is claimed with claimMessage; the claimer serves it through its API v2.
+//  2. Keep the assets (leaf_type=0) destined to L1 (destination_network=0) and, with
+//     options.pendingClaimMessages, the messages (leaf_type=1) too. A message is claimed with
+//     claimMessage, which the claimer serves through its API v2. The option is off by default: the first
+//     mainnet run listed assets only, and the default keeps that output.
 //  3. Call isClaimed(depositCount, l2NetworkId) on the L1 bridge for each one and keep the unclaimed
 //     (claimAsset and claimMessage share the claimed bitmap).
 func RunStepPending(
@@ -83,7 +85,14 @@ func RunStepPending(
 		return nil, fmt.Errorf("read bridges from %q: %w", dbPath, err)
 	}
 
-	candidates, err := selectPendingCandidates(bridges, gResult.BridgeExitCount)
+	withMessages := cfg.Options.PendingClaimMessages
+	if withMessages {
+		log.Info("Mode: assets and messages (options.pendingClaimMessages=true)")
+	} else {
+		log.Info("Mode: assets only (options.pendingClaimMessages=false): messages are not listed")
+	}
+
+	candidates, err := selectPendingCandidates(bridges, gResult.BridgeExitCount, withMessages)
 	if err != nil {
 		return nil, err
 	}
@@ -105,10 +114,13 @@ func pendingDBPath(dir string) string {
 	return filepath.Join(dir, fileStepGLiteDB)
 }
 
-// selectPendingCandidates returns, ordered by deposit count, the asset and message bridges to L1 among
-// the leaves emitted before the certificate. certificateExits is the number of leaves the certificate
-// appended at the end of the tree (StepGResult.BridgeExitCount).
-func selectPendingCandidates(bridges []bridgesyncerlite.BridgeLeaf, certificateExits uint64) ([]PendingBridge, error) {
+// selectPendingCandidates returns, ordered by deposit count, the asset bridges to L1 (and, when
+// withMessages, the message bridges to L1 too) among the leaves emitted before the certificate.
+// certificateExits is the number of leaves the certificate appended at the end of the tree
+// (StepGResult.BridgeExitCount).
+func selectPendingCandidates(
+	bridges []bridgesyncerlite.BridgeLeaf, certificateExits uint64, withMessages bool,
+) ([]PendingBridge, error) {
 	if certificateExits > uint64(len(bridges)) {
 		return nil, fmt.Errorf("the certificate has %d bridge exits but the local exit tree has only %d leaves "+
 			"(run step g first)", certificateExits, len(bridges))
@@ -121,7 +133,11 @@ func selectPendingCandidates(bridges []bridgesyncerlite.BridgeLeaf, certificateE
 		if uint64(b.DepositCount) >= preCertificate {
 			continue
 		}
-		if (b.LeafType != pendingLeafTypeAsset && b.LeafType != pendingLeafTypeMessage) || b.DestinationNetwork != 0 {
+		if b.DestinationNetwork != 0 {
+			continue
+		}
+		isMessage := withMessages && b.LeafType == pendingLeafTypeMessage
+		if b.LeafType != pendingLeafTypeAsset && !isMessage {
 			continue
 		}
 		candidates = append(candidates, PendingBridge{

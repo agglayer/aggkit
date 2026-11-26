@@ -63,7 +63,9 @@ Pipeline steps (run in order by default):
          Lists the L2→L1 asset bridges emitted before the certificate that are
          still unclaimed on L1 (isClaimed on l1BridgeAddress) and writes
          step-pending-l2-bridges.json, which exit_certificate_claimer serves
-         through /bridges and /claim-params. Reads the local exit tree DB and
+         through /bridges and /claim-params. With --pending-claim-messages (or
+         options.pendingClaimMessages=true) it also lists the unclaimed messages
+         (claimMessage); off by default. Reads the local exit tree DB and
          step-g-new-local-exit-root.json (run step g first). Requires l1RpcUrl.
 
   UPLOAD Post-submission step (--step upload, not part of "all"; last of the order, so
@@ -102,6 +104,11 @@ the output files from previous steps must already exist in the output directory.
 		&cli.BoolFlag{
 			Name:  "verbose",
 			Usage: "Enable debug logging",
+		},
+		&cli.BoolFlag{
+			Name: exit_certificate.FlagPendingClaimMessages,
+			Usage: "Step pending_claims also lists the unclaimed L2→L1 messages (claimMessage), not only the " +
+				"assets; overrides options.pendingClaimMessages (default false: assets only)",
 		},
 	}
 	app.Action = exit_certificate.Run
