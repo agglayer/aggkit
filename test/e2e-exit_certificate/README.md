@@ -121,7 +121,7 @@ and `L1Escrow` pays it in L1 USDC.
 - **Claimer** (`61`, `62`): started on delta 2 from `gs://…` in follow mode, it must switch to delta 3 without a
   restart (`/claimer/v2/health` reports the new run; same pid or container). Then, through API v2:
   `/bridges?address=<holder>` returns the holder's exit (`claim_method: claimMessage`, `beneficiary`,
-  `decoded_amount`, `display_token`), `/claim-params` its `claimMessage` arguments, and API v1 returns none of them.
+  `decoded_amount`, `display_token`), `/claim-params` its `claimMessage` arguments, and API v1 answers 410 Gone.
 - **Claims** (`60`, `62`): every holder ends with exactly its amount of L1 USDC, `L1Escrow` drops by the total paid
   and keeps the contract holder's share, every leaf is claimed, and a second claim of each leaf reverts.
 

@@ -4,7 +4,7 @@
 #   62-check_circle_usdc_claims.sh not-yet   the claimer still serves delta 2: no holder has a Message exit
 #   62-check_circle_usdc_claims.sh listed    the claimer serves delta 3: every holder finds its exit by its own
 #                                            address (the beneficiary decoded from the metadata), with
-#                                            claim_method claimMessage; API v1 never returns it; nothing is
+#                                            claim_method claimMessage; API v1 answers 410; nothing is
 #                                            claimed yet. Writes the address list claim-all.sh claims for
 #                                            (CIRCLE_CLAIM_ADDRESSES_FILE): the holders first, so each
 #                                            message is claimed through its beneficiary.
@@ -106,8 +106,6 @@ listed)
                 (.claims | length == 1) and (.claims[0] | .claim_method == \"claimMessage\" and .deposit_count == \$dc
                     and (.metadata | ascii_downcase) == \$md and (.metadata_hash | ascii_downcase) == \$h)" <<<"$1" >/dev/null' \
                 _ "$params" "$dc" "$expected_md" "$expected_md_hash"
-        check "holder ${holder}: API v1 does not return the Message exit (v1 clients can only claimAsset)" \
-            bash -c 'jq -e ".bridges | length == 0" <<<"$1" >/dev/null' _ "$(api v1/bridges "dest_address=${holder}")"
         check "deposit ${dc} is not claimed on L1 yet" \
             test "$(cast call --rpc-url "$L1_RPC_URL" "$L1_BRIDGE" "isClaimed(uint32,uint32)(bool)" "$dc" "$CIRCLE_L2_NETWORK_ID")" = "false"
         check "holder ${holder} holds no L1 USDC yet" test "$(l1_usdc "$holder")" = "0"
@@ -118,8 +116,10 @@ listed)
     escrow_bridges="$(api v2/bridges "address=${CIRCLE_L1_ESCROW}")"
     check "the same ${#HOLDERS[@]} exits are listed for their destination contract (L1Escrow)" \
         test "$(jq -c '[.bridges[].deposit_count] | sort' <<<"$escrow_bridges")" = "$(jq -c '[.[].deposit_count] | sort' <<<"$deposits")"
-    check "API v1 does not list them for L1Escrow either" \
-        bash -c 'jq -e ".bridges | all(.leaf_type == 0)" <<<"$1" >/dev/null' _ "$(api v1/bridges "dest_address=${CIRCLE_L1_ESCROW}")"
+    # API v1 is removed: no v1 client can see (and try to claimAsset) a Message exit.
+    check "API v1 is gone: /claimer/v1/bridges answers 410" \
+        test "$(curl -s -o /dev/null -w '%{http_code}' --get "${CLAIMER_URL}/claimer/v1/bridges" \
+            --data-urlencode "dest_address=${CIRCLE_L1_ESCROW}")" = "410"
     check "the contract holder ${CIRCLE_CONTRACT_HOLDER} was left out of the payout: no exit" \
         bash -c 'jq -e ".bridges | length == 0" <<<"$1" >/dev/null' _ "$(api v2/bridges "address=${CIRCLE_CONTRACT_HOLDER}")"
     check "L1Escrow still holds the ${CIRCLE_TOTAL_DEPOSITED} L1 USDC" test "$(l1_usdc "$CIRCLE_L1_ESCROW")" = "$CIRCLE_TOTAL_DEPOSITED"
