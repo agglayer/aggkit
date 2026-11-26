@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/db"
@@ -284,4 +285,29 @@ func TestReadCertificateHeaderStopsBeforeTheExits(t *testing.T) {
 	require.NoError(t, os.WriteFile(p, []byte(`{"network_id":1}`), 0o600))
 	_, err = readCertificateHeader(p)
 	require.ErrorContains(t, err, "header incomplete")
+}
+
+func TestPrepareUploadTmpDir(t *testing.T) {
+	t.Parallel()
+	base := filepath.Join(t.TempDir(), uploadTmpDirName)
+	require.NoError(t, os.MkdirAll(base, dirPermissions))
+	// A leftover of a killed upload (old) and the files of an upload still running elsewhere (recent).
+	stale := filepath.Join(base, "upload-killed")
+	require.NoError(t, os.MkdirAll(stale, dirPermissions))
+	require.NoError(t, os.WriteFile(filepath.Join(stale, "archive-1.zst"), []byte("x"), filePermissions))
+	old := time.Now().Add(-2 * staleUploadTmpAge)
+	require.NoError(t, os.Chtimes(stale, old, old))
+	running := filepath.Join(base, "upload-running")
+	require.NoError(t, os.MkdirAll(running, dirPermissions))
+
+	dir, cleanup, err := prepareUploadTmpDir(base)
+	require.NoError(t, err)
+	require.Equal(t, base, filepath.Dir(dir))
+	require.DirExists(t, dir)
+	require.NoDirExists(t, stale, "a leftover older than staleUploadTmpAge is removed")
+	require.DirExists(t, running, "a recent entry (another upload in progress) is kept")
+
+	cleanup()
+	require.NoDirExists(t, dir, "the per-upload dir is removed when the upload returns")
+	require.DirExists(t, running)
 }

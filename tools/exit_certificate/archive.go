@@ -24,8 +24,14 @@ import (
 const stepUpload = "upload"
 
 // uploadTmpDirName is the directory, inside the archive cache, holding each compressed file while it is
-// uploaded.
+// uploaded. Every upload works in its own subdirectory (removed when it returns), so concurrent uploads
+// sharing a cache dir never touch each other's files.
 const uploadTmpDirName = ".upload-tmp"
+
+// staleUploadTmpAge is how old an entry of uploadTmpDirName must be to count as the leftover of an upload
+// that was killed (SIGKILL, crash) before it could clean up; runUpload removes those at start. It is far
+// longer than any upload, so the files of an upload still running in another process are left alone.
+const staleUploadTmpAge = 24 * time.Hour
 
 // defaultArchiveCacheDirName is the default options.archiveCacheDir, created next to options.outputDir.
 const defaultArchiveCacheDirName = "archive-cache"
@@ -188,10 +194,11 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 			log.Warnf("close archive store: %v", err)
 		}
 	}()
-	tmpDir := filepath.Join(ArchiveCacheDir(cfg.Options), uploadTmpDirName)
-	if err := os.MkdirAll(tmpDir, dirPermissions); err != nil {
-		return fmt.Errorf("create %s: %w", tmpDir, err)
+	tmpDir, cleanupTmp, err := prepareUploadTmpDir(filepath.Join(ArchiveCacheDir(cfg.Options), uploadTmpDirName))
+	if err != nil {
+		return err
 	}
+	defer cleanupTmp()
 	log.Infof("Archiving %s (%d files, certificate height %d) into %s", dir, len(files), header.Height, loc)
 	res, err := runarchive.Upload(ctx, store, loc, dir, files, info, tmpDir)
 	if err != nil {
@@ -242,6 +249,8 @@ func runCertificateHeader(cfg *Config, dir, certFile string) (*certificateHeader
 // readCertificateHeader decodes the top-level header fields of a certificate JSON file without loading its
 // bridge exits: they come first in the file, so reading stops as soon as all of them are found (a mainnet
 // certificate is hundreds of MB).
+// It trusts the writer's field order (the tool always writes the header first): any field before the header
+// is decoded into a json.RawMessage, i.e. buffered whole.
 func readCertificateHeader(path string) (*certificateHeader, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -331,4 +340,38 @@ func checkpointSQLite(ctx context.Context, path string) error {
 		return fmt.Errorf("database is busy (%d of %d WAL frames checkpointed)", checkpointed, logFrames)
 	}
 	return nil
+}
+
+// prepareUploadTmpDir creates base if needed, removes the entries in it older than staleUploadTmpAge (left
+// by an upload that was killed before cleaning up: compressed copies of the largest files, GBs on mainnet,
+// that no later run would ever look at) and returns a fresh per-upload subdirectory plus the function that
+// removes it.
+func prepareUploadTmpDir(base string) (string, func(), error) {
+	if err := os.MkdirAll(base, dirPermissions); err != nil {
+		return "", nil, fmt.Errorf("create %s: %w", base, err)
+	}
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return "", nil, fmt.Errorf("read %s: %w", base, err)
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < staleUploadTmpAge {
+			continue
+		}
+		p := filepath.Join(base, e.Name())
+		log.Warnf("archive: removing stale upload leftover %s", p)
+		if err := os.RemoveAll(p); err != nil {
+			log.Warnf("archive: remove %s: %v", p, err)
+		}
+	}
+	dir, err := os.MkdirTemp(base, "upload-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create upload temp dir in %s: %w", base, err)
+	}
+	return dir, func() {
+		if err := os.RemoveAll(dir); err != nil {
+			log.Warnf("archive: remove %s: %v", dir, err)
+		}
+	}, nil
 }

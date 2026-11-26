@@ -205,6 +205,11 @@ func downloadFile(ctx context.Context, store ObjectStore, name, dest string, ent
 // They are never part of an archived run, and SQLite would replay a WAL or a hot journal onto dest when it
 // opens it, so a verified dest would no longer serve the archived content. If another process has dest
 // open, the side files are its own and removing them would corrupt what it sees: ErrFileInUse.
+//
+// The probe and the removal are not atomic: a process that opens dest between them can lose its side files.
+// This is accepted: SQLite offers no lock that would let us take the database exclusively from outside, the
+// window is a few syscalls, and the only expected concurrent user is a claimer on the same host, which must
+// not be started against a cache dir that is being (re)populated anyway.
 func removeStaleSideFiles(dest string) error {
 	var stale []string
 	for _, s := range sqliteSideSuffixes {
