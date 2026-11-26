@@ -57,6 +57,22 @@ func gasTokenStubURL(t *testing.T) string {
 	return srv.URL
 }
 
+// TestLargeETHBalanceHeadroom guards against funding replay senders with MaxUint256: Anvil credits
+// block priority fees to the beneficiary (the zero address on a fork, which can also be a replay
+// sender) with a wrapping add, so the balance must leave headroom for incoming credits while still
+// covering any realistic bridgeAsset value + gas.
+func TestLargeETHBalanceHeadroom(t *testing.T) {
+	t.Parallel()
+	balance, ok := new(big.Int).SetString(strings.TrimPrefix(largeETHBalance, "0x"), 16)
+	require.True(t, ok)
+	maxUint256 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint256Bits), big.NewInt(1))
+	headroom := new(big.Int).Sub(maxUint256, balance)
+	// Covers far more than the whole ETH supply (~2^87 wei) per sender…
+	require.Positive(t, balance.Cmp(new(big.Int).Lsh(big.NewInt(1), 200)))
+	// …and leaves as much room for fee credits before a uint256 wrap.
+	require.Positive(t, headroom.Cmp(new(big.Int).Lsh(big.NewInt(1), 200)))
+}
+
 func TestSetSenderBalance(t *testing.T) {
 	t.Parallel()
 	sender := common.HexToAddress("0x1111111111111111111111111111111111111111")

@@ -405,6 +405,35 @@ func TestRetryDeferredExitResendThenSucceeds(t *testing.T) {
 	require.True(t, resent)
 }
 
+func TestRetryDeferredExitRefundsSenderBeforePolling(t *testing.T) {
+	t.Parallel()
+	backend := newMockBackend()
+	s := newSentTx()
+	var polledAfterRefund bool
+	backend.waitReceipt = func(context.Context, common.Hash) ([]rpcLog, error) {
+		backend.mu.Lock()
+		polledAfterRefund = len(backend.setBalanceCalls) == 1
+		backend.mu.Unlock()
+		return bridgeEventReceipt(7, 5, 1), nil
+	}
+	_, err := retryDeferredExit(context.Background(), backend, s)
+	require.NoError(t, err)
+	require.Equal(t, []common.Address{s.job.bridge.DestinationAddress}, backend.setBalanceCalls)
+	require.True(t, polledAfterRefund, "sender must be re-funded before re-polling the stuck tx")
+}
+
+func TestRetryDeferredExitRefundError(t *testing.T) {
+	t.Parallel()
+	backend := newMockBackend()
+	backend.setBalance = func(context.Context, common.Address) error { return errors.New("boom") }
+	backend.waitReceipt = func(context.Context, common.Hash) ([]rpcLog, error) {
+		t.Fatal("must not poll when the re-fund fails")
+		return nil, nil
+	}
+	_, err := retryDeferredExit(context.Background(), backend, newSentTx())
+	require.ErrorContains(t, err, "re-fund sender")
+}
+
 func TestRetryDeferredExitRevertIsTerminal(t *testing.T) {
 	t.Parallel()
 	backend := newMockBackend()

@@ -277,8 +277,11 @@ divergence risk, and verifies the off-chain reconstruction against it.
    > limits. Transient fork errors are retried (`isTransientForkError`,
    > `--retries`/`--fork-retry-backoff`). For a large replay, fork against a **local archive node**.
 2. **Fund the senders** — Anvil runs with `--auto-impersonate`, so any account can send txs; each
-   sender's ETH balance is set once with `anvil_setBalance`. For ERC-20 exits, the sender's token
-   balance is patched to `MaxUint256` via storage and a single `approve(bridge, MaxUint256)` is sent
+   sender's ETH balance is set once with `anvil_setBalance` to `largeETHBalance` (2^255 — **not**
+   `MaxUint256`: Anvil credits priority fees to the fork's zero-address beneficiary with a wrapping add,
+   and the zero address is itself a replay sender when it holds a native exit, e.g. its genesis 1 wei;
+   at `MaxUint256` it wrapped to a few wei and its `bridgeAsset` never mined). For ERC-20 exits, the
+   sender's token balance is patched to `MaxUint256` via storage and a single `approve(bridge, MaxUint256)` is sent
    per (sender, token).
 3. **Replay bridge exits via a send/collect pipeline** — for each `BridgeExit`, send `bridgeAsset`
    (`forceUpdateGlobalExitRoot=false`, empty `permitData`). `replayBridgeExits` does **not** wait for
@@ -314,7 +317,8 @@ divergence risk, and verifies the off-chain reconstruction against it.
 
    A **receipt timeout** (`receiptPollTimeout`, 300s — the block did not mine in time, typically a
    slow remote fork backend) is **not** fatal: the exit is deferred and retried after the
-   send/collect phase drains (`retryDeferredExit`). The retry loops **unbounded** until the exit
+   send/collect phase drains (`retryDeferredExit`). The retry first **re-funds the sender** (so a tx
+   stuck in the pool for lack of funds can mine) and then loops **unbounded** until the exit
    mines: each iteration **re-polls the current tx** (Anvil has usually mined its block by then) and,
    only if the receipt is still absent — i.e. the tx never landed — **re-sends** the `bridgeAsset`
    and polls the new hash next. Re-polling before each re-send is what keeps the tree correct: a tx
