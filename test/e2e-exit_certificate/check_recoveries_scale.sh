@@ -5,10 +5,13 @@
 #
 #   1. normalise_input: takes the package (.tgz or unpacked dir), a case dir, or a bare recovery.json, and
 #      prints what it holds (outputs, leaf types, decoded payout total). A recovery.json in the older shape
-#      (numeric leaf_type + deposit_count) is converted to the current one, and the script says so.
+#      (numeric leaf_type + deposit_count) is converted to the current one, and the script says so. The
+#      version-1 fields the tool requires are completed when missing (origin_SC_funds, derived synthetically)
+#      and the deposit counts are set to 0..n-1, the ones the outputs get on the synthetic (empty) exit tree.
 #   2. build_synthetic_previous_run: the smallest state `--step recoveries` accepts (step-0-lbt.json,
-#      step-c-sc-locked-values.json, step-f-checks.json; no certificate, no lite DB, no RPC).
-#   3. run_recoveries: runs `--step recoveries` against unreachable RPC URLs (it needs none), timed.
+#      step-c-sc-locked-values.json, step-f-checks.json, step-0-l2_target_block.json and an empty lite DB; no
+#      certificate). When origin_SC_funds has entries, an anvil L2 stub answers the per-contract balance reads.
+#   3. run_recoveries: runs `--step recoveries` against unreachable RPC URLs (except that stub), timed.
 #   4. check_outputs: delta-exits.json equals the outputs field by field and in order, one ledger entry per
 #      output, duplicates reported, the run is deterministic, and the previous run is left untouched. A load
 #      probe then feeds delta-exits.json to the delta pipeline, which loads and validates every exit
@@ -21,7 +24,8 @@
 #
 # The input data is not part of this repo: it is the v2 package of the Circle USDC recovery,
 # `zkevm-circle-usdc-upgrade-submission.tgz`, obtained separately. Pass it as an argument (or set
-# CIRCLE_USDC_RECOVERY). Needs jq and bc; /usr/bin/time (GNU) is used for the peak RSS when present.
+# CIRCLE_USDC_RECOVERY). Needs jq and bc (and anvil + cast when origin_SC_funds has entries); /usr/bin/time
+# (GNU) is used for the peak RSS when present.
 set -euo pipefail
 export LC_ALL=C
 
@@ -39,6 +43,15 @@ L2_BRIDGE_ADDRESS="0x2a3DD3EB832aF982ec71669E178424b10Dca2EDe"
 # grpc-go's default maximum received message size. It is the library default, NOT a verified agglayer limit.
 GRPC_DEFAULT_MAX_MSG=4194304
 ZERO_HASH="0x0000000000000000000000000000000000000000000000000000000000000000"
+ZERO_ADDRESS="0x0000000000000000000000000000000000000000"
+# Who pays for the Transfer outputs in a SYNTHETIC origin_SC_funds (an output does not name the contract that
+# paid for it; only a recovery.json without origin_SC_funds gets one).
+SYNTHETIC_PAYER="0x000000000000000000000000000000000000beef"
+# L2 stub (anvil) for the per-contract budget: port, and the balance every listed contract gets (2^254).
+L2_STUB_PORT="${L2_STUB_PORT:-18545}"
+STUB_BALANCE="0x4000000000000000000000000000000000000000000000000000000000000000"
+# Runtime code of the stub tokens: every call returns STUB_BALANCE (PUSH32 b, PUSH1 0, MSTORE, RETURN 0..32).
+STUB_TOKEN_CODE="0x7f${STUB_BALANCE#0x}60005260206000f3"
 
 usage() {
     cat >&2 <<EOF
@@ -112,7 +125,10 @@ else
     WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/check-recoveries-scale.XXXXXX")"
     CREATED_WORK_DIR=1
 fi
+STUB_PID=""
+L2_RPC_FOR_CONFIG="$UNREACHABLE_URL"
 cleanup() {
+    if [[ -n "$STUB_PID" ]]; then kill "$STUB_PID" 2>/dev/null || true; fi
     if [[ "$CREATED_WORK_DIR" -eq 1 && "$KEEP" -eq 0 ]]; then
         rm -rf "$WORK_DIR"
     else
@@ -225,7 +241,7 @@ normalise_input() {
         CONVERTED=1
         log_warn "════════════════════════════════════════════════════════════════════════"
         log_warn "⚠️  OLD-SHAPE recovery.json: numeric leaf_type and/or deposit_count."
-        log_warn "⚠️  CONVERTED for this check: leaf_type 0/1 -> \"Transfer\"/\"Message\", deposit_count dropped."
+        log_warn "⚠️  CONVERTED for this check: leaf_type 0/1 -> \"Transfer\"/\"Message\", deposit_count dropped (set again below)."
         log_warn "⚠️  The converted file is NOT the one that was signed: its case hash differs from the kit's."
         log_warn "════════════════════════════════════════════════════════════════════════"
         mv "$RECOVERY" "${INPUT_DIR}/recovery.original.json"
@@ -236,6 +252,8 @@ normalise_input() {
                  else . end)
                 | del(.deposit_count))' "${INPUT_DIR}/recovery.original.json" > "$RECOVERY"
     fi
+
+    complete_v1_fields
 
     # options.recoveriesPath: the package .tgz itself when it needs no conversion (the tool reads recovery.json
     # and move.sh from it in memory, which also exercises that reader), else the normalised case dir.
@@ -272,6 +290,47 @@ normalise_input() {
     log_info "   options.recoveriesPath = ${RECOVERIES_PATH}"
 }
 
+# complete_v1_fields adds what the tool requires of a version-1 recovery.json and the input may lack, or holds
+# for another exit tree. Any change makes the file differ from the signed one (CONVERTED, its case hash differs):
+#   - origin_SC_funds (top level; the kit writes it since PR #6 198ff5c8): when missing, it is derived
+#     SYNTHETICALLY from the outputs, a Message's ETH paid by its sender, the Transfers by SYNTHETIC_PAYER
+#     (outputs of amount "0" pay for nothing). Big-integer sums with bc.
+#   - deposit_count of each output: the tool requires the previous exit tree size + the output's position; the
+#     synthetic previous run has an empty exit tree, so they are 0..n-1.
+complete_v1_fields() {
+    local -a adjusted=()
+    local tmp="${INPUT_DIR}/recovery.adjusting.json"
+    if ! jq -e 'has("origin_SC_funds")' "$RECOVERY" >/dev/null; then
+        local lines="${WORK_DIR}/sc-funds-lines.txt" sums="${WORK_DIR}/sc-funds-sums.txt" key total
+        jq -r --arg payer "$SYNTHETIC_PAYER" --arg z "$ZERO_ADDRESS" '.outputs[] | select(.amount != "0")
+            | if .leaf_type == "Message" then "\(.token_info.origin_token_address | ascii_downcase) 0 \($z) \(.amount)"
+              else "\($payer) \(.token_info.origin_network) \(.token_info.origin_token_address | ascii_downcase) \(.amount)" end' \
+            "$RECOVERY" > "$lines"
+        : > "$sums"
+        while read -r key; do
+            total="$( { echo "s=0"; awk -v k="$key" '$1 " " $2 " " $3 == k {print "s+=" $4}' "$lines"; echo "s"; } | bc)"
+            echo "${key} ${total}" >> "$sums"
+        done < <(awk '{print $1 " " $2 " " $3}' "$lines" | sort -u)
+        jq -R -s 'split("\n") | map(select(length > 0) | split(" ")) | group_by(.[0])
+            | map({address: .[0][0], tokens: map({token_info: {origin_network: (.[1] | tonumber), origin_token_address: .[2]},
+                                                  amount: .[3]})})' "$sums" > "${WORK_DIR}/sc-funds.json"
+        jq --slurpfile f "${WORK_DIR}/sc-funds.json" '.origin_SC_funds = $f[0]' "$RECOVERY" > "$tmp" && mv "$tmp" "$RECOVERY"
+        adjusted+=("origin_SC_funds DERIVED (synthetic: a Message's ETH paid by its sender, Transfers by ${SYNTHETIC_PAYER}): $(jq -c '[.origin_SC_funds[] | {address, tokens: (.tokens | length)}]' "$RECOVERY")")
+    fi
+    if ! jq -e '[.outputs | to_entries[] | .value.deposit_count == .key] | all' "$RECOVERY" >/dev/null; then
+        jq '.outputs |= [to_entries[] | .value + {deposit_count: .key}]' "$RECOVERY" > "$tmp" && mv "$tmp" "$RECOVERY"
+        adjusted+=("deposit_count SET to 0..$(( $(jq '.outputs | length' "$RECOVERY") - 1 )) (the synthetic previous run's exit tree is empty)")
+    fi
+    if [[ ${#adjusted[@]} -gt 0 ]]; then
+        CONVERTED=1
+        log_warn "════════════════════════════════════════════════════════════════════════"
+        local a
+        for a in "${adjusted[@]}"; do log_warn "⚠️  ${a}"; done
+        log_warn "⚠️  The adjusted file is NOT the one that was signed: its case hash differs from the kit's."
+        log_warn "════════════════════════════════════════════════════════════════════════"
+    fi
+}
+
 # --- 2. synthetic previous run ---
 PREV_DIR="${WORK_DIR}/previous-run"
 
@@ -279,22 +338,21 @@ PREV_DIR="${WORK_DIR}/previous-run"
 # (loadRecoveriesState): step-0-lbt.json, step-c-sc-locked-values.json and step-f-checks.json (plus an optional
 # ledger, absent here: nothing applied yet). Without delta-manifest.json it is taken as a first, non-delta run
 # (recoveriesStateDir), so no certificate, wait result or lite DB is needed. A Message consumes no balance, so
-# a messages-only recovery needs empty lists. Each Transfer token gets an entry whose pending balance is
-# exactly what the recovery takes (synthetic: the wrapped address is the origin address, except ETH).
+# a value-less messages-only recovery needs empty lists. Each token an output takes (a Transfer its token_info, a
+# Message carrying ETH the ETH) gets an entry whose pending balance is exactly what the recovery takes
+# (synthetic: the wrapped address is the origin address, except ETH). The version-1 checks also need the L2
+# snapshot block (step-0-l2_target_block.json) and the previous exit tree (an empty lite DB: 0 leaves).
 build_synthetic_previous_run() {
     mkdir -p "$PREV_DIR"
-    local sums="${WORK_DIR}/transfer-sums.txt" key net addr total
+    local sums="${WORK_DIR}/transfer-sums.txt" lines="${WORK_DIR}/charged-lines.txt" key total
+    jq -r --arg z "$ZERO_ADDRESS" '.outputs[] | select(.leaf_type == "Transfer" or .amount != "0")
+        | if .leaf_type == "Transfer" then "\(.token_info.origin_network) \(.token_info.origin_token_address | ascii_downcase) \(.amount)"
+          else "0 \($z) \(.amount)" end' "$RECOVERY" > "$lines"
     : > "$sums"
-    while read -r net addr; do
-        key="${net} ${addr}"
-        total="$( { echo "s=0"
-            jq -r --argjson n "$net" --arg a "$addr" '.outputs[] | select(.leaf_type == "Transfer"
-                and .token_info.origin_network == $n and (.token_info.origin_token_address | ascii_downcase) == $a)
-                | "s+=" + .amount' "$RECOVERY"
-            echo "s"; } | bc)"
+    while read -r key; do
+        total="$( { echo "s=0"; awk -v k="$key" '$1 " " $2 == k {print "s+=" $3}' "$lines"; echo "s"; } | bc)"
         echo "${key} ${total}" >> "$sums"
-    done < <(jq -r '.outputs[] | select(.leaf_type == "Transfer")
-        | "\(.token_info.origin_network) \(.token_info.origin_token_address | ascii_downcase)"' "$RECOVERY" | sort -u)
+    done < <(awk '{print $1 " " $2}' "$lines" | sort -u)
 
     local zero_addr="0x0000000000000000000000000000000000000000"
     jq -R -s --arg z "$zero_addr" 'split("\n") | map(select(length > 0) | split(" "))
@@ -307,8 +365,52 @@ build_synthetic_previous_run() {
     jq -R -s 'split("\n") | map(select(length > 0) | split(" "))
         | map({originNetwork: (.[0] | tonumber), originTokenAddress: .[1], lbtAmount: "0", certificateAmount: "0",
                agglayerAmount: "0", match: true, skippedSCLockedAmount: .[2]})' "$sums" > "${PREV_DIR}/step-f-checks.json"
-    log_info "🧱 Synthetic previous run: ${PREV_DIR} ($(wc -l < "$sums") token(s) with Transfer outputs; no certificate, no lite DB)"
+    : > "${PREV_DIR}/step-g-l2bridgesyncerlite.sqlite"
+    start_l2_stub
+    echo "$TARGET_BLOCK" > "${PREV_DIR}/step-0-l2_target_block.json"
+    log_info "🧱 Synthetic previous run: ${PREV_DIR} ($(wc -l < "$sums") token(s) taken; empty exit tree, L2 snapshot block ${TARGET_BLOCK}; no certificate)"
     PREV_STATE_HASH="$(cd "$PREV_DIR" && sha256sum ./*)"
+}
+
+# start_l2_stub: the per-contract budget of version-1 cases reads, at the L2 snapshot block, the balance of every
+# (contract, token) of origin_SC_funds (eth_getBalance for ETH, balanceOf on the LBT's L2 token). With entries,
+# an anvil node stands in for the L2: each contract gets STUB_BALANCE wei and each token code that answers
+# STUB_BALANCE to any call, then one block is mined and its number is the snapshot block. Without entries, no
+# balance is read and the L2 URL stays unreachable (snapshot block 0). Sets TARGET_BLOCK and L2_RPC_FOR_CONFIG.
+start_l2_stub() {
+    TARGET_BLOCK=0
+    if jq -e '.origin_SC_funds | length == 0' "$RECOVERY" >/dev/null; then
+        log_info "   origin_SC_funds is empty: the per-contract budget reads no balance (no L2 RPC)"
+        return
+    fi
+    local bin url contract net addr token i
+    for bin in anvil cast; do
+        command -v "$bin" >/dev/null || { log_error "$bin is required: origin_SC_funds has entries (per-contract budget)"; exit 1; }
+    done
+    url="http://127.0.0.1:${L2_STUB_PORT}"
+    anvil --port "$L2_STUB_PORT" --chain-id 31337 >"${WORK_DIR}/l2-stub.log" 2>&1 &
+    STUB_PID=$!
+    for ((i = 0; i < 50; i++)); do
+        cast block-number --rpc-url "$url" >/dev/null 2>&1 && break
+        sleep 0.2
+    done
+    cast block-number --rpc-url "$url" >/dev/null 2>&1 || { log_error "the L2 stub (anvil) did not start on port ${L2_STUB_PORT}"; exit 1; }
+    while read -r contract net addr; do
+        if [[ "$net" == 0 && "$addr" == "$ZERO_ADDRESS" ]]; then
+            cast rpc --rpc-url "$url" anvil_setBalance "$contract" "$STUB_BALANCE" >/dev/null
+        else
+            token="$(jq -r --argjson n "$net" --arg a "$addr" \
+                '[.[] | select(.originNetwork == $n and (.originTokenAddress | ascii_downcase) == $a)][0].wrappedTokenAddress // empty' \
+                "${PREV_DIR}/step-0-lbt.json")"
+            [[ -n "$token" ]] || { log_error "origin_SC_funds token ${net}/${addr} is not taken by any output"; exit 1; }
+            cast rpc --rpc-url "$url" anvil_setCode "$token" "$STUB_TOKEN_CODE" >/dev/null
+        fi
+    done < <(jq -r '.origin_SC_funds[] | .address as $c | .tokens[]
+        | "\($c | ascii_downcase) \(.token_info.origin_network) \(.token_info.origin_token_address | ascii_downcase)"' "$RECOVERY")
+    cast rpc --rpc-url "$url" evm_mine >/dev/null
+    TARGET_BLOCK="$(cast block-number --rpc-url "$url")"
+    L2_RPC_FOR_CONFIG="$url"
+    log_info "   L2 stub (anvil) on ${url}: $(jq '[.origin_SC_funds[].tokens[]] | length' "$RECOVERY") (contract, token) balance(s) of ${STUB_BALANCE}"
 }
 
 # --- 3. the recoveries step ---
@@ -316,11 +418,11 @@ TIME_V=0
 /usr/bin/time -v -o /dev/null true >/dev/null 2>&1 && TIME_V=1
 
 # write_config <file> <outputDir> <deltaExitsFile> <previousRun> [recoveriesPath]: a delta config whose RPC
-# URLs are all unreachable.
+# URLs are all unreachable, except the L2 stub when there is one.
 write_config() {
-    jq -n --arg u "$UNREACHABLE_URL" --arg bridge "$L2_BRIDGE_ADDRESS" --argjson net "$L2_NETWORK_ID" \
-        --arg out "$2" --arg exits "$3" --arg prev "$4" --arg rec "${5:-}" '
-        {l1RpcUrl: $u, l2RpcUrl: $u, l2BridgeAddress: $bridge, l2NetworkId: $net,
+    jq -n --arg u "$UNREACHABLE_URL" --arg l2 "$L2_RPC_FOR_CONFIG" --arg bridge "$L2_BRIDGE_ADDRESS" \
+        --argjson net "$L2_NETWORK_ID" --arg out "$2" --arg exits "$3" --arg prev "$4" --arg rec "${5:-}" '
+        {l1RpcUrl: $u, l2RpcUrl: $l2, l2BridgeAddress: $bridge, l2NetworkId: $net,
          options: ({deltaMode: true, previousRun: $prev, deltaExitsFile: $exits, outputDir: $out,
                     agglayerAdminURL: $u} + (if $rec == "" then {} else {recoveriesPath: $rec} end))}' > "$1"
 }
@@ -359,7 +461,7 @@ run_recoveries() {
     ELAPSED="$(printf '%.3f' "$(echo "scale=3; ($end - $start) / 1" | bc)")"
     PEAK_RSS_KB=""
     [[ -f "$timef" ]] && PEAK_RSS_KB="$(sed -n 's/.*Maximum resident set size (kbytes): *//p' "$timef")"
-    # No RPC is needed: every URL is unreachable, so an attempt would show up as a dial error in the log.
+    # No other RPC is needed: every other URL is unreachable, so an attempt would show up as a dial error.
     check "${label}: no RPC was attempted (no dial error in the log)" \
         bash -c '! grep -qiE "dial tcp|connection refused" "$1"' _ "$logf"
 }
@@ -382,6 +484,8 @@ check_outputs() {
     check "the ledger entries follow the outputs (leaf type, destination, metadata, in order)" \
         cmp -s <(jq -r '.outputs[] | [.leaf_type, (.destination_address | ascii_downcase), (.metadata | ascii_downcase)] | @json' "$RECOVERY") \
                <(jq -r '.[] | [(.leafType // "Transfer"), (.destination | ascii_downcase), ((.metadata // "0x") | ascii_downcase)] | @json' "$ledger")
+    check "the ledger records the deposit counts of the outputs (0..$((OUTPUTS - 1)) on the synthetic exit tree)" \
+        jq -e '[.[].depositCount] == [range(0; length)]' "$ledger" >/dev/null
     LEDGER_CASE_HASH="$(jq -r '.[0].caseHash' "$ledger")"
     if [[ -f "${INPUT_DIR}/case/case-hash.txt" && "$CONVERTED" -eq 0 ]]; then
         check "the tool's case hash is the kit's case-hash.txt ($(tr -d '[:space:]' < "${INPUT_DIR}/case/case-hash.txt"))" \
@@ -483,7 +587,11 @@ run_delta_pipeline_live() {
     # The derived config sits next to the given one so its relative paths (keystore, ...) stay valid.
     live_cfg="${base_dir}/$(basename "${DELTA_CONFIG%.json}")-scale-check.json"
     live_out="${WORK_DIR}/live-out"
-    jq --arg prev "$prev_abs" --arg exits "${OUT1}/delta-exits.json" --arg out "$live_out" '
+    # The exits alone, without the ledger next to them: its deposit counts are the synthetic ones (0..n-1), not
+    # those of the live exit tree, so Step G2 must not cross-check them (it does not without a ledger).
+    mkdir -p "${WORK_DIR}/live-exits"
+    cp "${OUT1}/delta-exits.json" "${WORK_DIR}/live-exits/delta-exits.json"
+    jq --arg prev "$prev_abs" --arg exits "${WORK_DIR}/live-exits/delta-exits.json" --arg out "$live_out" '
         .options.deltaMode = true | .options.previousRun = $prev | .options.deltaExitsFile = $exits
         | .options.outputDir = $out | del(.options.recoveriesPath) | del(.options.archiveURI)' "$DELTA_CONFIG" > "$live_cfg"
 
@@ -546,7 +654,7 @@ summary() {
     echo
     echo "=== check_recoveries_scale summary ==="
     row "outputs (recovery.json)" "${n} (${LEAF_TYPES})"
-    [[ "$CONVERTED" -eq 1 ]] && row "input shape" "OLD (numeric leaf_type / deposit_count), CONVERTED"
+    [[ "$CONVERTED" -eq 1 ]] && row "input" "CONVERTED / ADJUSTED for this check (see the warnings above)"
     [[ "$MESSAGES" -gt 0 ]] && row "Message payouts decoded (metadata word 2)" "${MSG_TOTAL} base units, ${MSG_HOLDERS} holders"
     [[ "$TRANSFERS" -gt 0 ]] && row "Transfer amounts" "${TRANSFER_TOTAL} base units"
     row "identical outputs (extra copies)" "${DUP_OUTPUTS}"

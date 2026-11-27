@@ -142,7 +142,10 @@ index stays the same, so it should not matter for `claimAsset`, but it is not ex
 ## Scale check (outside the e2e)
 
 The e2e pays three holders. The real Circle USDC recovery has 6,620 outputs in one `recovery.json`.
-`check_recoveries_scale.sh` feeds that file to `--step recoveries` offline (a synthetic previous run, no RPC):
+`check_recoveries_scale.sh` feeds that file to `--step recoveries` offline (a synthetic previous run with an empty
+exit tree, no RPC; an anvil stub for the per-contract balances only when `origin_SC_funds` has entries). It sets the
+deposit counts to 0..n-1 (those of the empty tree) and derives a synthetic `origin_SC_funds` when the file has none,
+and says so:
 
 ```bash
 ./test/e2e-exit_certificate/check_recoveries_scale.sh <zkevm-circle-usdc-upgrade-submission.tgz | dir | recovery.json>
