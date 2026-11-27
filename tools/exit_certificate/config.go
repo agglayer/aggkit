@@ -146,6 +146,11 @@ type Options struct {
 	// bucket/prefix). Defaults to "archive-cache" next to OutputDir. Relative paths resolve from the
 	// config file directory.
 	ArchiveCacheDir string `json:"archiveCacheDir"`
+	// ArchiveMetaFiles are extra files that document the run (the config, notes, the inputs it was built
+	// from...). Every run copies them, zstd-compressed, into <OutputDir>/metafiles/<basename>.zst, so they
+	// are part of the run's result and --step upload archives them with it. Basenames must be unique.
+	// Relative paths resolve from the config file directory. Never list files holding secrets.
+	ArchiveMetaFiles []string `json:"archiveMetaFiles"`
 	// DeltaExitsFile is the JSON file with the new bridge exits (see DeltaExitsFile). Required with
 	// DeltaMode. Relative paths resolve from the config file directory.
 	DeltaExitsFile string `json:"deltaExitsFile"`
@@ -294,6 +299,11 @@ func validateRawConfig(raw *rawConfig) error {
 	if raw.Options != nil && raw.Options.ArchiveURI != "" {
 		if _, err := runarchive.ParseURI(raw.Options.ArchiveURI); err != nil {
 			return fmt.Errorf("invalid options.archiveURI: %w", err)
+		}
+	}
+	if raw.Options != nil {
+		if err := validateArchiveMetaFiles(raw.Options.ArchiveMetaFiles); err != nil {
+			return err
 		}
 	}
 	// capMode, when set, must be one of the known modes.
@@ -576,6 +586,12 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 	if raw.ArchiveCacheDir != "" {
 		opts.ArchiveCacheDir = resolvePath(configDir, raw.ArchiveCacheDir)
 	}
+	if len(raw.ArchiveMetaFiles) > 0 {
+		opts.ArchiveMetaFiles = make([]string, 0, len(raw.ArchiveMetaFiles))
+		for _, f := range raw.ArchiveMetaFiles {
+			opts.ArchiveMetaFiles = append(opts.ArchiveMetaFiles, resolvePath(configDir, f))
+		}
+	}
 	if raw.DeltaExitsFile != "" {
 		opts.DeltaExitsFile = resolvePath(configDir, raw.DeltaExitsFile)
 	}
@@ -693,6 +709,7 @@ type rawOpts struct {
 	RecoveriesPath                        string                 `json:"recoveriesPath"`
 	ArchiveURI                            string                 `json:"archiveURI"`
 	ArchiveCacheDir                       string                 `json:"archiveCacheDir"`
+	ArchiveMetaFiles                      []string               `json:"archiveMetaFiles"`
 }
 
 // --- LBT file parsing ---

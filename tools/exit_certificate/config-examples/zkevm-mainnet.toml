@@ -45,6 +45,8 @@ outputDir = "./output-mainnet"
 # OPTIONAL — archive base for --step upload once the certificate is settled (write-once bucket): the run
 # goes to <archiveURI>/<networkID>/<height>. See "Archiving runs in a GCS bucket" in ../README.md.
 #archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs"
+# OPTIONAL — extra files copied (zstd) into <outputDir>/metafiles/ and archived with the run. No secrets.
+#archiveMetaFiles = ["./RUN-NOTES.md"]
 l1StartBlock = 22431675
 l2StartBlock = 0
 ignoreGenesisBalance = false

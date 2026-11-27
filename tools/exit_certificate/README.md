@@ -138,6 +138,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `recoveriesPath` | `""` | Only with `deltaMode`, input of `--step recoveries`: a directory (searched recursively), a `.tgz` of the [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) or a `recovery.json` with already verified recoveries. See [Recoveries step](#recoveries-step--from-verified-recoveries-to-delta-exits). Relative paths resolve from the config file directory. |
 | `archiveURI` | `""` | Archive base for `--step upload`, `gs://<bucket>/<prefix>` (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs`): the run goes to `<archiveURI>/<networkID>/<height>`, height taken from the certificate. Only the upload step needs it. See [Archiving runs](#archiving-runs-in-a-gcs-bucket). |
 | `archiveCacheDir` | `"archive-cache"` next to `outputDir` | Base directory archived runs are downloaded into (`<archiveCacheDir>/<bucket>/<prefix>/`): the `gs://` `previousRun` of a delta, and the claimer's `--run-source`. Relative paths resolve from the config file directory. |
+| `archiveMetaFiles` | `[]` | Extra files that document the run (notes, the inputs it was built from...). Every run copies each one, zstd-compressed, to `<outputDir>/metafiles/<file name>.zst` (files there no longer listed are removed), so they are part of the result and, when `archiveURI` is set, `--step upload` archives them with the run. File names must be unique; relative paths resolve from the config file directory. Once the output dir was uploaded they are not copied again. **Never list files holding secrets** (keystores, a config with passwords or tokens). See [Meta files](#meta-files--optionsarchivemetafiles). |
 | `verifyNewLocalExitRootUsingShadowFork` | `true` | Selects the Step G2 mode. When `true` (default), Step G2 spins up an Anvil shadow-fork, replays every bridge exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` (requires `anvil` in `$PATH`). When `false`, Step G2 skips Anvil — much faster, but it trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order. See [Step G](#step-g--compute-newlocalexitroot) for details. |
 
 ### Important configuration notes
@@ -701,6 +702,36 @@ step:
 
 Upload is the last step of a run: the archive cannot be changed, so files written afterwards (e.g. a late
 `--step pending_claims`, which warns about it) are not archived.
+
+### Meta files — `options.archiveMetaFiles`
+
+Files that are not produced by the tool but document the run — operator notes, the delta exits file, the
+recoveries kit, a sanitized copy of the config — can be kept with it by listing them in
+`options.archiveMetaFiles`:
+
+```toml
+[options]
+archiveMetaFiles = ["./RUN-NOTES.md", "./delta-exits.json", "./recoveries.tgz"]
+```
+
+Every run (any `--step`, `upload` included) copies them, compressed with zstd, into `outputDir`:
+
+```text
+output/
+├── metafiles/
+│   ├── RUN-NOTES.md.zst
+│   ├── delta-exits.json.zst
+│   └── recoveries.tgz.zst
+└── ...
+```
+
+The copies are refreshed on each run and a file removed from the list is removed from `metafiles/` too. A
+missing file, a directory or two entries with the same file name are errors. With `archiveURI` set,
+`--step upload` archives `metafiles/` like any other file of the output dir (the object is
+`metafiles/<name>.zst.zst`, as every archived file gets its own `.zst`). Once the output dir has been uploaded
+(`archive-manifest.json` present) the meta files are not copied again: the archive is write-once. Decompress a
+copy with `zstd -d metafiles/<name>.zst`. **Do not list files holding secrets** — the archive is readable by
+everyone with `roles/storage.objectViewer`.
 
 ### Delta from an archived run
 

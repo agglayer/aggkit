@@ -97,6 +97,9 @@ func Run(c *cli.Context) error {
 	if err := os.MkdirAll(cfg.Options.OutputDir, dirPermissions); err != nil {
 		return fmt.Errorf("create output dir: %w", err)
 	}
+	if err := copyMetaFiles(cfg.Options); err != nil {
+		return err
+	}
 
 	step := c.String("step")
 	if cfg.Options.DeltaMode {

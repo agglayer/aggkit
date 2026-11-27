@@ -75,6 +75,11 @@ outputDir = "./output"
 # Default: "archive-cache" next to outputDir.
 #archiveCacheDir = "./archive-cache"
 
+# OPTIONAL — extra files that document the run (notes, inputs...). Every run copies them, zstd-compressed,
+# into <outputDir>/metafiles/<file name>.zst, so --step upload archives them with the run. File names must be
+# unique; relative paths resolve from this file's directory. Never list files holding secrets.
+#archiveMetaFiles = ["./RUN-NOTES.md"]
+
 # First L1 block to scan in Step E. Default: 0 (genesis).
 l1StartBlock = 0
 
