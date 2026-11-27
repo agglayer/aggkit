@@ -114,6 +114,9 @@ type HealthResponseV2 struct {
 	NetworkID   uint32      `json:"network_id"`
 	Version     VersionInfo `json:"version"`
 	APIVersions []int       `json:"api_versions"`
+	// Run and Follow: see HealthResponse.
+	Run    *RunInfo      `json:"run,omitempty"`
+	Follow *FollowStatus `json:"follow,omitempty"`
 }
 
 // errorResponseV2 is the JSON body API v2 returns on error.
@@ -141,6 +144,60 @@ type HealthResponse struct {
 	Version   VersionInfo `json:"version"`
 	// APIVersions lists the API major versions this claimer serves (/claimer/v<N>/): only 2.
 	APIVersions []int `json:"api_versions"`
+	// Run describes the exit_certificate run being served.
+	Run *RunInfo `json:"run,omitempty"`
+	// Follow is the state of follow mode; absent when it is disabled.
+	Follow *FollowStatus `json:"follow,omitempty"`
+}
+
+// RunInfo describes the exit_certificate run a claimer serves, as reported by /health.
+type RunInfo struct {
+	// Source is the archive prefix of the run (gs://<bucket>/<prefix>); absent when the claimer serves
+	// local files.
+	Source string `json:"source,omitempty"`
+	// Height and CertificateHash are those of the run's certificate.
+	Height          uint64 `json:"height"`
+	CertificateHash string `json:"certificate_hash"`
+	// DataVersion is the data version of the archived run; absent when the claimer serves local files.
+	DataVersion int `json:"data_version,omitempty"`
+}
+
+// Results of a follow mode check, as reported by /health (FollowStatus.LastCheckResult).
+const (
+	// FollowResultNoNewRun: the run of the next height is not archived (yet).
+	FollowResultNoNewRun = "no_new_run"
+	// FollowResultSwitched: the claimer switched to the run of the next height.
+	FollowResultSwitched = "switched"
+	// FollowResultUnsupportedVersion: the next run has a manifest or data version this claimer does not
+	// support; it keeps serving the current one.
+	FollowResultUnsupportedVersion = "unsupported_version"
+	// FollowResultLookupFailed: the archive could not be read.
+	FollowResultLookupFailed = "lookup_failed"
+	// FollowResultDownloadFailed: the next run could not be downloaded or did not match its manifest.
+	FollowResultDownloadFailed = "download_failed"
+	// FollowResultLoadFailed: the files of the next run could not be loaded, or are not consistent.
+	FollowResultLoadFailed = "load_failed"
+	// FollowResultL1SyncFailed: the settlement of the next run could not be indexed in the L1 Info Tree.
+	FollowResultL1SyncFailed = "l1_sync_failed"
+)
+
+// FollowStatus is the state of follow mode, as reported by /health.
+type FollowStatus struct {
+	IntervalSeconds int `json:"interval_seconds"`
+	// NextRun is the archive prefix the claimer looks for the next run at, and NextHeight its height.
+	NextRun    string `json:"next_run"`
+	NextHeight uint64 `json:"next_height"`
+	// LastCheckTime (RFC 3339, UTC) and LastCheckResult (one of the FollowResult* values) describe the
+	// last finished check; both are absent before the first one.
+	LastCheckTime   string `json:"last_check_time,omitempty"`
+	LastCheckResult string `json:"last_check_result,omitempty"`
+	// BlockedByUnsupportedVersion is true while a newer run exists that this claimer cannot serve because
+	// of its manifest or data version: the claimer needs an upgrade.
+	BlockedByUnsupportedVersion bool `json:"blocked_by_unsupported_version"`
+	// Preparing is true while a newer run is being downloaded, loaded or synced before the switch.
+	Preparing bool `json:"preparing"`
+	// LastSwitchTime (RFC 3339, UTC) is when the claimer last switched run; absent if it never did.
+	LastSwitchTime string `json:"last_switch_time,omitempty"`
 }
 
 // apiRemovedResponse is the 410 Gone body of every removed /claimer/v1 endpoint.

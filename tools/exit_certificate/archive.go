@@ -14,6 +14,7 @@ import (
 	"time"
 
 	aggkit "github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
@@ -33,6 +34,10 @@ const uploadTmpDirName = ".upload-tmp"
 // that was killed (SIGKILL, crash) before it could clean up; runUpload removes those at start. It is far
 // longer than any upload, so the files of an upload still running in another process are left alone.
 const staleUploadTmpAge = 24 * time.Hour
+
+// manifestInfoNewLocalExitRoot is the key, in the info of an archive manifest, of the certificate's
+// new_local_exit_root.
+const manifestInfoNewLocalExitRoot = "newLocalExitRoot"
 
 // defaultArchiveCacheDirName is the default options.archiveCacheDir, created next to options.outputDir.
 const defaultArchiveCacheDirName = "archive-cache"
@@ -56,10 +61,42 @@ func ArchiveCacheDir(opts Options) string {
 	return filepath.Join(filepath.Dir(filepath.Clean(opts.OutputDir)), defaultArchiveCacheDirName)
 }
 
+// ArchiveDataVersion is the data version this tool records in the manifest of every run it archives: the
+// version of the format of the run files their readers depend on (certificate JSON, lite syncer DB schema,
+// step-wait-result.json, step-pending-l2-bridges.json and the recoveries/ state). Bump it, and the range
+// each reader supports, whenever a change to one of them would break an older reader.
+const ArchiveDataVersion = 1
+
+// supportedArchiveDataVersions is the range of data versions a delta (and --step recoveries) can chain on.
+var supportedArchiveDataVersions = runarchive.VersionRange{Min: 1, Max: ArchiveDataVersion}
+
+// agglayerClientOpener creates the agglayer client of a config (newAgglayerClient; tests pass a mock).
+type agglayerClientOpener func(cfg *Config) (agglayer.AgglayerClientInterface, error)
+
+// newAgglayerClient creates the gRPC agglayer client of options.agglayerClient.
+func newAgglayerClient(cfg *Config) (agglayer.AgglayerClientInterface, error) {
+	agglayerClientCfg := cfg.Options.AgglayerClient
+	if agglayerClientCfg.GRPC == nil || agglayerClientCfg.GRPC.URL == "" {
+		return nil, errors.New("agglayerClient.grpc.url is required")
+	}
+	client, err := agglayer.NewAgglayerClient(agglayerClientCfg, log.GetDefaultLogger())
+	if err != nil {
+		return nil, fmt.Errorf("create agglayer client: %w", err)
+	}
+	return client, nil
+}
+
 // resolvePreviousRun downloads options.previousRun when it is an archive URI and points the option at the
 // local copy, so the rest of the delta pipeline only deals with a directory. Only the files a delta reads
 // are downloaded (see selectPreviousRunFiles); each one is verified against the archive manifest.
-func resolvePreviousRun(ctx context.Context, cfg *Config, open archiveOpener) error {
+//
+// The URI is either a run (its prefix ends with /<networkID>/<height, 10 digits>, see
+// runarchive.Location.RunParts) or the archive base runs are stored under. With the base, the run is the
+// one of the network's last settled certificate, whose height is asked to the agglayer
+// (latestSettledRun). A run with an unsupported manifest or data version is refused
+// (runarchive.ErrUnsupportedVersion): a delta cannot chain on a run it does not understand, nor on an
+// older one.
+func resolvePreviousRun(ctx context.Context, cfg *Config, open archiveOpener, openAgglayer agglayerClientOpener) error {
 	uri := cfg.Options.PreviousRun
 	if !runarchive.IsURI(uri) {
 		return nil
@@ -67,6 +104,13 @@ func resolvePreviousRun(ctx context.Context, cfg *Config, open archiveOpener) er
 	loc, err := runarchive.ParseURI(uri)
 	if err != nil {
 		return fmt.Errorf("options.previousRun: %w", err)
+	}
+	var settled *settledRun
+	if _, _, _, isRun := loc.RunParts(); !isRun {
+		if settled, err = latestSettledRun(ctx, cfg, loc, openAgglayer); err != nil {
+			return err
+		}
+		loc = settled.Location
 	}
 	store, closeStore, err := open(ctx, loc.Bucket)
 	if err != nil {
@@ -80,13 +124,79 @@ func resolvePreviousRun(ctx context.Context, cfg *Config, open archiveOpener) er
 
 	dir := runarchive.CacheDir(ArchiveCacheDir(cfg.Options), loc)
 	log.Infof("Previous run: downloading %s into %s", loc, dir)
-	res, err := runarchive.Download(ctx, store, loc, dir, selectPreviousRunFiles)
-	if err != nil {
+	res, err := runarchive.Download(ctx, store, loc, dir, func(m *runarchive.Manifest) ([]string, error) {
+		if err := runarchive.CheckDataVersion(m, supportedArchiveDataVersions); err != nil {
+			return nil, err
+		}
+		if err := settled.checkManifest(m); err != nil {
+			return nil, err
+		}
+		return selectPreviousRunFiles(m)
+	})
+	switch {
+	case errors.Is(err, runarchive.ErrIncompleteRun) && settled != nil:
+		return fmt.Errorf("options.previousRun %s is an archive base and the last settled certificate of network "+
+			"%d has height %d, but its run is not archived (run --step upload on that run's output dir, or point "+
+			"options.previousRun at its local directory): %w", uri, cfg.L2NetworkID, settled.Height, err)
+	case errors.Is(err, runarchive.ErrUnsupportedVersion):
+		return fmt.Errorf("options.previousRun %s was archived by a newer exit_certificate (a delta cannot chain "+
+			"on a run it cannot read, nor on an older one): %w", loc, err)
+	case err != nil:
 		return fmt.Errorf("download options.previousRun: %w", err)
 	}
 	cfg.Options.PreviousRun = dir
 	cfg.Options.PreviousRunArchive = loc.String()
 	cfg.Options.PreviousRunArchiveManifestSHA256 = res.ManifestSHA256
+	return nil
+}
+
+// settledRun is the archived run of the network's last settled certificate, as located from the agglayer.
+type settledRun struct {
+	runarchive.Location
+	// Height and LER are the height and local exit root of the last settled certificate.
+	Height uint64
+	LER    common.Hash
+}
+
+// latestSettledRun locates, under the archive base, the run of the network's last settled certificate:
+// <base>/<networkID>/<height>, the height being the agglayer's settled height. No listing of the bucket is
+// needed. It fails while the network has a certificate that is not settled yet (the same guard as Step H).
+func latestSettledRun(
+	ctx context.Context, cfg *Config, base runarchive.Location, openAgglayer agglayerClientOpener,
+) (*settledRun, error) {
+	client, err := openAgglayer(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("options.previousRun %s is an archive base (it does not end with "+
+			"/<networkID>/<10-digit height>), so the agglayer is asked for the last settled height: %w", base, err)
+	}
+	settledLER, nextHeight, err := fetchSettledNetworkState(ctx, cfg, client)
+	if err != nil {
+		return nil, fmt.Errorf("options.previousRun %s is an archive base: find the last settled certificate: %w",
+			base, err)
+	}
+	if nextHeight == 0 {
+		return nil, fmt.Errorf("options.previousRun %s is an archive base, but the agglayer has no settled "+
+			"certificate for network %d: there is no previous run to chain on", base, cfg.L2NetworkID)
+	}
+	height := nextHeight - 1
+	loc := base.Run(cfg.L2NetworkID, height)
+	log.Infof("Previous run: the last settled certificate of network %d has height %d, using %s",
+		cfg.L2NetworkID, height, loc)
+	return &settledRun{Location: loc, Height: height, LER: settledLER}, nil
+}
+
+// checkManifest compares what the manifest of the located run says about its certificate (when it does)
+// with the agglayer's settled state, before anything is downloaded. Step CHECK and Step H check it again
+// against the certificate itself (verifyChainsOnPreviousRun).
+func (s *settledRun) checkManifest(m *runarchive.Manifest) error {
+	if s == nil {
+		return nil
+	}
+	if ler := m.Info[manifestInfoNewLocalExitRoot]; ler != "" && common.HexToHash(ler) != s.LER {
+		return fmt.Errorf("the run archived at %s has new_local_exit_root %s but the agglayer settled LER of the "+
+			"certificate at height %d is %s: it is not the run of the settled certificate", s.Location, ler,
+			s.Height, s.LER.Hex())
+	}
 	return nil
 }
 
@@ -177,15 +287,15 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	}
 
 	info := map[string]string{
-		"tool":              "exit_certificate",
-		"toolVersion":       aggkit.Version,
-		"mode":              mode,
-		"l2NetworkId":       strconv.FormatUint(uint64(cfg.L2NetworkID), decimalBase),
-		"certificateHash":   wait.CertificateHash.Hex(),
-		"height":            strconv.FormatUint(header.Height, decimalBase),
-		"prevLocalExitRoot": header.PrevLocalExitRoot.Hex(),
-		"newLocalExitRoot":  header.NewLocalExitRoot.Hex(),
-		"createdAt":         time.Now().UTC().Format(time.RFC3339),
+		"tool":                       "exit_certificate",
+		"toolVersion":                aggkit.Version,
+		"mode":                       mode,
+		"l2NetworkId":                strconv.FormatUint(uint64(cfg.L2NetworkID), decimalBase),
+		"certificateHash":            wait.CertificateHash.Hex(),
+		"height":                     strconv.FormatUint(header.Height, decimalBase),
+		"prevLocalExitRoot":          header.PrevLocalExitRoot.Hex(),
+		manifestInfoNewLocalExitRoot: header.NewLocalExitRoot.Hex(),
+		"createdAt":                  time.Now().UTC().Format(time.RFC3339),
 	}
 	if cfg.Options.DeltaMode {
 		var manifest DeltaManifest
@@ -212,7 +322,7 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	}
 	defer cleanupTmp()
 	log.Infof("Archiving %s (%d files, certificate height %d) into %s", dir, len(files), header.Height, loc)
-	res, err := runarchive.Upload(ctx, store, loc, dir, files, info, tmpDir)
+	res, err := runarchive.Upload(ctx, store, loc, dir, files, ArchiveDataVersion, info, tmpDir)
 	if err != nil {
 		return fmt.Errorf("step %s: %w", stepUpload, err)
 	}

@@ -134,7 +134,7 @@ The field names are identical in both formats. Pass whichever you created with `
 | `ignoreUnsupportedL2Events` | `false` | When `true`, the Step G lite syncer logs a warning and continues instead of aborting when it sees an L2 event that would invalidate a BridgeEvent-only reconstruction (`SetSovereignTokenAddress`, `MigrateLegacyToken`, `RemoveLegacySovereignTokenAddress`, `BackwardLET`, `ForwardLET`). The computed `NewLocalExitRoot` may then be incorrect — enable only to knowingly inspect such a chain. |
 | `ignoreLERMismatch` | `false` | When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9, the Step 0 guard, and Step H's LER cross-check) logs a warning and continues instead of aborting when the L2 bridge's LER at the target block does not match the agglayer's `settled_ler`. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to knowingly inspect such a snapshot. Step H's pending-certificate guard is unaffected. Rejected with `deltaMode`. |
 | `deltaMode` | `false` | When `true`, builds a certificate that only carries the **new** bridge exits of `deltaExitsFile`, chained on the previous run (`previousRun`). See [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate). `exitAddress` is not required in this mode. |
-| `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run, or its archive `gs://<bucket>/<prefix>` (see [Archiving runs](#archiving-runs-in-a-gcs-bucket)). Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
+| `previousRun` | `""` | Required with `deltaMode`: output directory of the previous (settled) run, its archive `gs://<bucket>/<base>/<networkID>/<height>`, or the archive base `gs://<bucket>/<base>` to use the run of the last settled certificate (see [Archiving runs](#archiving-runs-in-a-gcs-bucket)). Relative paths resolve from the config file directory. Must differ from `outputDir`. Setting it without `deltaMode` is rejected. |
 | `deltaExitsFile` | `""` | Required with `deltaMode`: JSON file with the new exits (format in [Delta mode](#delta-mode--chain-additional-exits-on-a-previous-certificate)). Relative paths resolve from the config file directory. |
 | `recoveriesPath` | `""` | Only with `deltaMode`, input of `--step recoveries`: a directory (searched recursively), a `.tgz` of the [zkevm-proof-of-ownership-kit](https://github.com/agglayer/zkevm-proof-of-ownership-kit) or a `recovery.json` with already verified recoveries. See [Recoveries step](#recoveries-step--from-verified-recoveries-to-delta-exits). Relative paths resolve from the config file directory. |
 | `archiveURI` | `""` | Archive base for `--step upload`, `gs://<bucket>/<prefix>` (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs`): the run goes to `<archiveURI>/<networkID>/<height>`, height taken from the certificate. Only the upload step needs it. See [Archiving runs](#archiving-runs-in-a-gcs-bucket). |
@@ -693,7 +693,8 @@ One height is one run: the bucket is write-once, so a second, different run for 
 uploaded. After the sunset every certificate of the network is one of ours, so the heights are consecutive and
 the run that follows height `h` is always at `h+1`.
 
-`archive-manifest.json` has `"compression": "zstd"` and lists every file with the size and SHA-256 of the
+`archive-manifest.json` has `"version": 1` (the manifest format), `"dataVersion"` (the format of the archived
+files, see [Versions](#versions)), `"compression": "zstd"` and lists every file with the size and SHA-256 of the
 **original** file plus the name, size and CRC32C of its compressed object. Its `info` records the run: tool
 version, `full`/`delta`, network ID, `height`, `prevLocalExitRoot`, `newLocalExitRoot`, certificate hash,
 `createdAt`, and for a delta the archive of its previous run. It is uploaded **last**: a prefix without it is
@@ -758,9 +759,52 @@ usual); once the output dir has been uploaded (`archive-manifest.json` present) 
 archive is write-once. **Do not list files holding secrets** — the archive is readable by everyone with
 `roles/storage.objectViewer`.
 
+### Versions
+
+The manifest carries two independent versions:
+
+| Field | What it versions | Today |
+| ----- | ---------------- | ----- |
+| `version` | The manifest itself (its fields, how objects are named and compressed). | `1` |
+| `dataVersion` | The format of the archived files as their readers see it: the certificate JSON, the lite syncer DB schema (`step-g-l2bridgesyncerlite.sqlite`), `step-wait-result.json`, `step-pending-l2-bridges.json` and the `recoveries/` state. | `1` |
+
+- `--step upload` records the `dataVersion` of the tool that produced the run (`ArchiveDataVersion` in
+  `archive.go`). **Bump it whenever a change to one of those files would break an older reader**, and extend
+  the range each reader supports (`supportedArchiveDataVersions` for a delta, `SupportedDataVersions` in the
+  claimer) once it can read the new format.
+- A manifest without `dataVersion` (the first archived runs) is read as `dataVersion` 1.
+- A reader that finds a `version` or `dataVersion` it does not support fails with a distinct error
+  (`ErrUnsupportedVersion`: "use a newer version of the tool"), told apart from a corrupted manifest, and
+  downloads nothing. A **delta** stops there: chaining on an older run is never valid. The **claimer** refuses
+  such a run at startup, and in follow mode keeps serving the run it has (see its README).
+
 ### Delta from an archived run
 
-Set the delta's `options.previousRun` to the archive of the previous run:
+Set the delta's `options.previousRun` to the archive **base** and the tool finds the latest run on its own:
+
+```toml
+[options]
+deltaMode = true
+previousRun = "gs://polygonlabs-zkevm-prod-let-archive/runs"   # the base: use the run of the last settled certificate
+deltaExitsFile = "./delta-exits.json"
+outputDir = "./output-delta-1"
+archiveURI = "gs://polygonlabs-zkevm-prod-let-archive/runs"   # --step upload puts this delta at runs/1/0000000005
+```
+
+- The tool asks the agglayer (`agglayerClient.grpc.url`) for the network's last settled height `H` and reads
+  `<base>/<l2NetworkId>/<H>/` directly: the prefix is computed, the bucket is never listed (read access to
+  objects is enough).
+- It fails with a clear error when that prefix has no manifest (the last settled run was not archived: run
+  `--step upload` on its output dir, or use its local directory), when the manifest says another
+  `newLocalExitRoot` than the agglayer's `settled_ler`, when the network has a pending certificate, or when it
+  has no settled certificate at all. It never falls back to an older run.
+- Step CHECK and Step H still check the agglayer's `settled_ler` and height against the downloaded
+  certificate, as with any `previousRun`.
+- `delta-manifest.json` records the run that was chosen (`previousRunArchive`, e.g.
+  `gs://…/runs/1/0000000004`) and the SHA-256 of its manifest.
+
+`previousRun` is taken as a **run** when it ends with `/<networkID>/<height as 10 digits>` and as the **base**
+otherwise. To pin the run yourself, give its prefix:
 
 ```toml
 [options]

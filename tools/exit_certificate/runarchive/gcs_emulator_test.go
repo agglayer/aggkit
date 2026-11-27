@@ -53,7 +53,7 @@ func TestGCSStoreEmulator(t *testing.T) {
 	files, err := runarchive.CollectFiles(dir, nil)
 	require.NoError(t, err)
 
-	res, err := runarchive.Upload(ctx, store, loc, dir, files, map[string]string{"mode": "full"}, t.TempDir())
+	res, err := runarchive.Upload(ctx, store, loc, dir, files, 1, map[string]string{"mode": "full"}, t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, 2, res.Uploaded)
 
@@ -71,7 +71,7 @@ func TestGCSStoreEmulator(t *testing.T) {
 		archivetest.CRC32C([]byte("other")), nil)
 	require.ErrorIs(t, err, runarchive.ErrObjectExists)
 
-	res, err = runarchive.Upload(ctx, store, loc, dir, files, nil, t.TempDir())
+	res, err = runarchive.Upload(ctx, store, loc, dir, files, 1, nil, t.TempDir())
 	require.NoError(t, err)
 	require.True(t, res.AlreadyComplete)
 
@@ -82,4 +82,24 @@ func TestGCSStoreEmulator(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dest, "step-g-l2bridgesyncerlite.sqlite"))
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(big, got))
+
+	// Looking for the run of a height is one read of its manifest: no listing of the bucket.
+	base := runarchive.Location{Bucket: bucket, Prefix: "runs"}
+	_, err = runarchive.ReadManifest(ctx, store, base.Run(1, 5))
+	require.ErrorIs(t, err, runarchive.ErrIncompleteRun, "nothing archived at that height")
+	small := t.TempDir()
+	writeFile(t, small, "exit-certificate-signed.json", `{"height":5}`)
+	// An upload that did not complete: a file of the run without its manifest.
+	require.NoError(t, store.Create(ctx, base.Run(1, 5).ObjectName("exit-certificate-signed.json.zst"),
+		bytes.NewReader([]byte("partial")), archivetest.CRC32C([]byte("partial")), nil))
+	_, err = runarchive.ReadManifest(ctx, store, base.Run(1, 5))
+	require.ErrorIs(t, err, runarchive.ErrIncompleteRun, "a prefix without manifest is not a run")
+	_, err = runarchive.Upload(ctx, store, base.Run(1, 6), small, []string{"exit-certificate-signed.json"}, 2, nil,
+		t.TempDir())
+	require.NoError(t, err)
+	m, err := runarchive.ReadManifest(ctx, store, base.Run(1, 6))
+	require.NoError(t, err)
+	require.Equal(t, 2, m.DataVersion)
+	require.ErrorIs(t, runarchive.CheckDataVersion(m, runarchive.VersionRange{Min: 1, Max: 1}),
+		runarchive.ErrUnsupportedVersion)
 }

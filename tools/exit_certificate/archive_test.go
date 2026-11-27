@@ -84,6 +84,16 @@ func TestSelectPreviousRunFiles(t *testing.T) {
 
 	_, err = selectPreviousRunFiles(manifest(fileSignedCertificate, fileStepWaitResult))
 	require.ErrorContains(t, err, fileStepGLiteDB)
+
+	// The recoveries state a delta carries to the next one: the ledger, the per-contract budget and the L2
+	// target block of the first run (in recoveries/), plus the root step-0-l2_target_block.json.
+	files, err = selectPreviousRunFiles(manifest(fileFullCertificate, fileStepWaitResult, fileStepGLiteDB,
+		fileStep0TargetBlock, dirRecoveries+"/"+fileRecoveriesLedger, dirRecoveries+"/"+fileRecoveriesSCFunds,
+		dirRecoveries+"/"+fileStep0TargetBlock))
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{fileFullCertificate, fileStepWaitResult, fileStepGLiteDB, fileStep0TargetBlock,
+		dirRecoveries + "/" + fileRecoveriesLedger, dirRecoveries + "/" + fileRecoveriesSCFunds,
+		dirRecoveries + "/" + fileStep0TargetBlock}, files)
 }
 
 // TestArchiveRoundTrip archives a settled run with --step upload and uses the archive as the previousRun of
@@ -134,7 +144,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 	deltaCfg := &Config{Options: Options{
 		DeltaMode: true, PreviousRun: testRunURI, OutputDir: t.TempDir(), ArchiveCacheDir: cache,
 	}}
-	require.NoError(t, resolvePreviousRun(context.Background(), deltaCfg, open))
+	require.NoError(t, resolvePreviousRun(context.Background(), deltaCfg, open, nil))
 	require.Equal(t, runarchive.CacheDir(cache, loc), deltaCfg.Options.PreviousRun)
 	require.Equal(t, loc.String(), deltaCfg.Options.PreviousRunArchive)
 	require.NotEmpty(t, deltaCfg.Options.PreviousRunArchiveManifestSHA256)
@@ -148,7 +158,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 
 	// A local previousRun is left untouched (nothing to download).
 	localCfg := &Config{Options: Options{PreviousRun: dir}}
-	require.NoError(t, resolvePreviousRun(context.Background(), localCfg, open))
+	require.NoError(t, resolvePreviousRun(context.Background(), localCfg, open, nil))
 	require.Equal(t, dir, localCfg.Options.PreviousRun)
 }
 

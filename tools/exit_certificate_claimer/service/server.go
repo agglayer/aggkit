@@ -39,14 +39,22 @@ type Server struct {
 	address      string
 	readTimeout  time.Duration
 	writeTimeout time.Duration
-	claimer      *Claimer
-	router       *gin.Engine
+	// runs holds the run being served; follow mode replaces it while requests are in flight.
+	runs   *runSlot
+	router *gin.Engine
 	// version is the build version reported by /health.
 	version VersionInfo
+	// follow is the follow mode loop, nil when it is disabled. Set before Start.
+	follow *follower
 }
 
 // NewServer builds the HTTP server and registers the routes.
 func NewServer(cfg *Config, claimer *Claimer, logger *log.Logger) *Server {
+	return newServer(cfg, &servedRun{claimer: claimer}, logger)
+}
+
+// newServer is NewServer for a loaded run (see loadRun), whose description /health reports.
+func newServer(cfg *Config, run *servedRun, logger *log.Logger) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -56,7 +64,7 @@ func NewServer(cfg *Config, claimer *Claimer, logger *log.Logger) *Server {
 		address:      cfg.ListenAddress(),
 		readTimeout:  time.Duration(cfg.ReadTimeoutSeconds) * time.Second,
 		writeTimeout: time.Duration(cfg.WriteTimeoutSeconds) * time.Second,
-		claimer:      claimer,
+		runs:         newRunSlot(run),
 		router:       router,
 		version:      versionInfo(),
 	}
@@ -113,14 +121,26 @@ func versionInfo() VersionInfo {
 	}
 }
 
+// followStatus returns the state of follow mode, nil when it is disabled.
+func (s *Server) followStatus() *FollowStatus {
+	if s.follow == nil {
+		return nil
+	}
+	return s.follow.Status()
+}
+
 // handleHealthV1 answers the legacy /claimer/v1/health so existing probes and monitoring keep working;
 // its api_versions tells a client that only v2 is served.
 func (s *Server) handleHealthV1(c *gin.Context) {
+	run, done := s.runs.acquire()
+	defer done()
 	c.JSON(http.StatusOK, HealthResponse{
 		Status:      "ok",
-		NetworkID:   s.claimer.NetworkID(),
+		NetworkID:   run.claimer.NetworkID(),
 		Version:     s.version,
 		APIVersions: supportedAPIVersions(),
+		Run:         run.info,
+		Follow:      s.followStatus(),
 	})
 }
 
@@ -133,22 +153,29 @@ func handleRemovedV1(c *gin.Context) {
 }
 
 func (s *Server) handleHealthV2(c *gin.Context) {
+	run, done := s.runs.acquire()
+	defer done()
 	c.JSON(http.StatusOK, HealthResponseV2{
 		APIVersion:  apiVersion2,
 		Status:      "ok",
-		NetworkID:   s.claimer.NetworkID(),
+		NetworkID:   run.claimer.NetworkID(),
 		Version:     s.version,
 		APIVersions: supportedAPIVersions(),
+		Run:         run.info,
+		Follow:      s.followStatus(),
 	})
 }
 
 func (s *Server) handleBridgesV2(c *gin.Context) {
+	run, done := s.runs.acquire()
+	defer done()
+
 	address, ok := parseAddress(c, addressParam)
 	if !ok {
 		return
 	}
 
-	bridges, err := s.claimer.ListBridgesV2(address)
+	bridges, err := run.claimer.ListBridgesV2(address)
 	if err != nil {
 		respondErrorV2(c, http.StatusInternalServerError, err.Error())
 		return
@@ -156,13 +183,16 @@ func (s *Server) handleBridgesV2(c *gin.Context) {
 
 	c.JSON(http.StatusOK, BridgesResponseV2{
 		APIVersion: apiVersion2,
-		NetworkID:  s.claimer.NetworkID(),
+		NetworkID:  run.claimer.NetworkID(),
 		Address:    address.Hex(),
 		Bridges:    bridges,
 	})
 }
 
 func (s *Server) handleClaimParamsV2(c *gin.Context) {
+	run, done := s.runs.acquire()
+	defer done()
+
 	address, ok := parseAddress(c, addressParam)
 	if !ok {
 		return
@@ -173,7 +203,7 @@ func (s *Server) handleClaimParamsV2(c *gin.Context) {
 		return
 	}
 
-	claims, err := s.claimer.BuildClaimParamsV2(c.Request.Context(), address, depositCount)
+	claims, err := run.claimer.BuildClaimParamsV2(c.Request.Context(), address, depositCount)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrLocalExitRootNotSettled) {
@@ -185,7 +215,7 @@ func (s *Server) handleClaimParamsV2(c *gin.Context) {
 
 	c.JSON(http.StatusOK, ClaimParamsResponseV2{
 		APIVersion: apiVersion2,
-		NetworkID:  s.claimer.NetworkID(),
+		NetworkID:  run.claimer.NetworkID(),
 		Address:    address.Hex(),
 		Claims:     claims,
 	})

@@ -351,7 +351,7 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 	wholeDelta := step == "" || step == "all"
 	if wholeDelta || step == stepRecoveries {
 		// Both read options.previousRun: fetch it first when it is an archive URI.
-		if err := resolvePreviousRun(ctx, cfg, runarchive.Open); err != nil {
+		if err := resolvePreviousRun(ctx, cfg, runarchive.Open, newAgglayerClient); err != nil {
 			return err
 		}
 	}

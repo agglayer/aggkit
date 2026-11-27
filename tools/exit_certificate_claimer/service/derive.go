@@ -62,6 +62,11 @@ func selectConfig(ctx context.Context, c *cli.Context, logger *log.Logger) (*Con
 		if c.String("run-source") != "" {
 			return nil, fmt.Errorf("--run-source needs --exit-certificate-config; with --config set runSource in the file")
 		}
+		for _, flag := range runSourceFlags {
+			if c.IsSet(flag) {
+				return nil, fmt.Errorf("--%s needs --exit-certificate-config; with --config set it in the file", flag)
+			}
+		}
 		return LoadConfig(c.String("config"))
 	}
 	if c.IsSet("config") {
@@ -77,15 +82,41 @@ func selectConfig(ctx context.Context, c *cli.Context, logger *log.Logger) (*Con
 	if err != nil {
 		return nil, err
 	}
-	if runSource := c.String("run-source"); runSource != "" {
-		if err := cfg.UseRunSource(runSource, ecCfg); err != nil {
-			return nil, err
-		}
+	if err := applyRunSourceFlags(c, cfg, ecCfg); err != nil {
+		return nil, err
 	}
 	return cfg, nil
 }
 
-// UseRunSource makes a derived config serve the run archived at runSource instead of the files of the
+// runSourceFlags are the flags that only make sense with --run-source.
+var runSourceFlags = []string{"run-source-height", "follow-interval-seconds", "follow-keep-old-runs"}
+
+// applyRunSourceFlags applies --run-source and the flags that go with it (starting height, follow mode) to
+// a config derived from an exit_certificate one.
+func applyRunSourceFlags(c *cli.Context, cfg *Config, ecCfg *exitcertificate.Config) error {
+	runSource := c.String("run-source")
+	if runSource == "" {
+		for _, flag := range runSourceFlags {
+			if c.IsSet(flag) {
+				return fmt.Errorf("--%s needs --run-source", flag)
+			}
+		}
+		return nil
+	}
+	if c.IsSet("run-source-height") {
+		height := c.Uint64("run-source-height")
+		cfg.RunSourceHeight = &height
+	}
+	cfg.FollowIntervalSeconds = c.Int("follow-interval-seconds")
+	if c.Bool("follow-keep-old-runs") {
+		cleanup := false
+		cfg.FollowCleanupOldRuns = &cleanup
+	}
+	return cfg.UseRunSource(runSource, ecCfg)
+}
+
+// UseRunSource makes a derived config serve the run archived at runSource (a run, or the archive base when
+// RunSourceHeight is set) instead of the files of the
 // exit_certificate output directory: the run data is downloaded into the exit_certificate's archive cache
 // (options.archiveCacheDir, by default "archive-cache" next to options.outputDir), while the L1 Info Tree
 // DB stays in options.outputDir.

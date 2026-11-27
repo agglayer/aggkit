@@ -11,6 +11,13 @@ writeTimeoutSeconds = 30
 # download them from the run's archive in a GCS bucket (exit_certificate --step upload):
 #runSource  = "gs://<bucket>/runs/<networkID>/<height, 10 digits>"   # e.g. gs://<bucket>/runs/1/0000000005
 #runDataDir = "./archive-cache"   # default: archive-cache next to this file
+# ...or the archive base plus the height of the run to serve (networkId is then required):
+#runSource       = "gs://<bucket>/runs"
+#runSourceHeight = 5
+# Follow mode (needs runSource): every followIntervalSeconds look for the run of the next certificate height
+# in the archive and switch to it without a restart. 0 (default) disables it.
+#followIntervalSeconds = 60
+#followCleanupOldRuns  = true    # default: remove the local copy of a run once the next one is served
 
 signedCertificatePath = "../../exit_certificate/output/exit-certificate-signed.json"
 localExitTreeDBPath   = "../../exit_certificate/output/step-g-l2bridgesyncerlite.sqlite"
