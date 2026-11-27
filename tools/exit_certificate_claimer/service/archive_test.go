@@ -54,6 +54,7 @@ func archiveRun(t *testing.T, files map[string]string) *archivetest.Objects {
 	dir := t.TempDir()
 	rels := make([]string, 0, len(files))
 	for name, content := range files {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600))
 		rels = append(rels, name)
 	}
@@ -78,6 +79,7 @@ func TestFetchRunSource(t *testing.T) {
 			stepWaitResultFile:                     "wait",
 			exitcertificate.FileStepPendingBridges: "pending",
 			"step-b-eoa-balances.json":             "not needed by the claimer",
+			"metafiles/RUN-NOTES.md":               "operator notes (options.archiveMetaFiles)",
 		})
 		cfg := &Config{RunSource: testRunSource, RunDataDir: t.TempDir(), L1InfoTreeDBPath: "l1.sqlite"}
 		require.NoError(t, fetchRunSource(context.Background(), cfg, logger, archivetest.Opener(t, objs)))
@@ -92,6 +94,11 @@ func TestFetchRunSource(t *testing.T) {
 		require.FileExists(t, cfg.SignedCertificatePath)
 		require.NoFileExists(t, filepath.Join(dir, signedCertificateFile))
 		require.NoFileExists(t, filepath.Join(dir, "step-b-eoa-balances.json"))
+		// The meta files of the run (metafiles/) are not the claimer's: never downloaded, and a restart on the same
+		// cache dir passes its checks.
+		require.NoDirExists(t, filepath.Join(dir, "metafiles"))
+		again := &Config{RunSource: testRunSource, RunDataDir: cfg.RunDataDir, L1InfoTreeDBPath: "l1.sqlite"}
+		require.NoError(t, fetchRunSource(context.Background(), again, logger, archivetest.Opener(t, objs)))
 	})
 
 	t.Run("regular run: signed certificate, no pending bridges", func(t *testing.T) {
