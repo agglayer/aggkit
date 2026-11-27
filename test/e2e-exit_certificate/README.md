@@ -115,8 +115,12 @@ and `L1Escrow` pays it in L1 USDC.
   `prepare-submission.sh` and `verify-submission.sh` run with `--allow-test-fork`.
 - **Recoveries** (`53`): the `.tgz` joins the two legacy cases in `tmp/recoveries-cases/`. The ledger skips those
   and issues exactly the kit's outputs as delta exits, **field by field and in the same order**; the balance state
-  (`step-c`, `step-f-checks`) is unchanged because a message consumes none; the legacy ledger entries are kept as
-  they were. Negative cases: a message with value, and a message from another network.
+  (`step-c`, `step-f-checks`) is unchanged because Circle's messages carry no ETH (`origin_SC_funds` is empty);
+  the legacy ledger entries are kept as they were. Each output's `deposit_count` must be the deposit count its
+  exit gets (delta 2's exit tree size + its position). The kit does not write it yet, so `53` adds it to the
+  kit's `recovery.json` and repacks the `.tgz` (to remove once the kit does). Negative cases: a message carrying
+  ETH paid by a contract that held none at the snapshot (per-contract budget), stale deposit counts
+  (anti-replay), and a message from another network.
 - **Certificate** (`53`): generated, submitted, settled; same chaining checks as deltas 1 and 2.
 - **Claimer** (`61`, `62`): started on delta 2 from `gs://…` in follow mode, it must switch to delta 3 without a
   restart (`/claimer/v2/health` reports the new run; same pid or container). Then, through API v2:

@@ -15,7 +15,9 @@
 #      prepare-submission.sh packs the .tgz and verify-submission.sh verifies it.
 #   2. Adds the .tgz to the cases dir, next to the two legacy-format cases of deltas 1 and 2, and runs
 #      `--step recoveries` chained on delta 2: the ledger skips the legacy cases and issues one Message exit
-#      per output of the kit, field by field and in the same order. Messages consume no balance.
+#      per output of the kit, field by field and in the same order. Circle's messages carry no ETH, so they
+#      consume no balance and origin_SC_funds is empty. Until the kit writes each output's deposit_count, the
+#      e2e adds it (delta 2's exit tree size + the output's position) and repacks the .tgz.
 #   3. Generates the delta certificate (CHECK → F → G2 → H → I → SIGN), submits it and waits for settlement.
 #   4. Verifies the chaining on delta 2, as 52-generate_delta_certificate.sh does for deltas 1 and 2.
 #
@@ -261,7 +263,36 @@ build_circle_kit_case() {
 log_info "📝 Delta ${INDEX}: recover the USDC.e of ${PAYOUT_COUNT} EOA holders (${CIRCLE_PAYOUT_TOTAL} base units) with Message exits, chained on ${PREV_OUTPUT}"
 build_circle_kit_case
 [[ -d "$CASES_DIR" ]] || { log_error "cases dir not found: $CASES_DIR (deltas 1 and 2 put their cases there)"; exit 1; }
-cp "$KIT_PACKAGE" "$CASES_DIR/"
+
+# deposit_count of each output: the deposit count its exit gets in this delta, i.e. the previous run's exit tree
+# size + the output's position (the tool refuses any other value: anti-replay). Delta 2's tree ends at its
+# delta-manifest.json lastDepositCount.
+PREV_MANIFEST="${PREV_OUTPUT}/delta-manifest.json"
+[[ -f "$PREV_MANIFEST" ]] || { log_error "previous run delta manifest not found: $PREV_MANIFEST"; exit 1; }
+NEXT_DEPOSIT_COUNT="$(( $(jq -r '.lastDepositCount' "$PREV_MANIFEST") + 1 ))"
+CASE_RECOVERY="${TMP_DIR}/kit-packages/kurtosis-circle-usdc-recovery-case.json"
+CASE_PACKAGE="${CASES_DIR}/$(basename "$KIT_PACKAGE")"
+if jq -e '.outputs | all(has("deposit_count"))' "$KIT_RECOVERY" >/dev/null; then
+    cp "$KIT_RECOVERY" "$CASE_RECOVERY"
+    cp "$KIT_PACKAGE" "$CASE_PACKAGE"
+else
+    # TODO: remove when the kit emits deposit_count. The kit (PR #6) does not write it yet, so the e2e adds it to
+    # the kit's recovery.json and repacks the .tgz the tool reads. The kit's signed and verified package
+    # (KIT_PACKAGE) is kept as is for the package checks; the repacked recovery.json is no longer the signed one
+    # (its case hash differs), which the tool does not check: the legitimacy of a case is a manual prerequisite.
+    log_warn "⚠️  The kit wrote no deposit_count: adding it (${NEXT_DEPOSIT_COUNT} + output index) and repacking the .tgz"
+    jq --argjson next "$NEXT_DEPOSIT_COUNT" '.outputs |= [to_entries[] | .value + {deposit_count: ($next + .key)}]' \
+        "$KIT_RECOVERY" > "$CASE_RECOVERY"
+    repack_dir="$(mktemp -d)"
+    repack_list="$(mktemp)"
+    tar -tzf "$KIT_PACKAGE" > "$repack_list"
+    tar -xzf "$KIT_PACKAGE" -C "$repack_dir"
+    mapfile -t repack_recs < <(grep -E '(^|/)recovery\.json$' "$repack_list")
+    [[ ${#repack_recs[@]} -eq 1 ]] || { log_error "$KIT_PACKAGE holds ${#repack_recs[@]} recovery.json"; exit 1; }
+    cp "$CASE_RECOVERY" "${repack_dir}/${repack_recs[0]}"
+    tar -czf "$CASE_PACKAGE" -C "$repack_dir" --no-recursion -T "$repack_list"
+    rm -rf "$repack_dir" "$repack_list"
+fi
 
 EXPECTED_EXITS="$(expected_exits)"
 log_info "🔎 Checking the kit package"
@@ -274,6 +305,13 @@ check "the package is verified: recovery.json version 1, the 2 Safe owners that 
         _ "$KIT_PACKAGE" "$PAYOUT_COUNT" "$CIRCLE_SAFE_OWNER_1" "$CIRCLE_SAFE_OWNER_2"
 check "the recovery.json inside the package is the one the kit wrote" \
     bash -c 'test "$(tar -xzOf "$1" --wildcards "*/recovery.json" | sha256sum)" = "$(sha256sum < "$2")"' _ "$KIT_PACKAGE" "$KIT_RECOVERY"
+check "origin_SC_funds is empty: Circle's payout messages carry no ETH, so no contract pays for them" \
+    jq -e '.origin_SC_funds == []' "$KIT_RECOVERY" >/dev/null
+check "the case the tool reads has deposit counts ${NEXT_DEPOSIT_COUNT}..$((NEXT_DEPOSIT_COUNT + PAYOUT_COUNT - 1)), and the kit's outputs otherwise" \
+    bash -c 'jq -e --argjson next "$3" "[.outputs[].deposit_count] == [range(\$next; \$next + (.outputs | length))]" "$1" >/dev/null &&
+        test "$(jq -S ".outputs |= map(del(.deposit_count))" "$1")" = "$(jq -S ".outputs |= map(del(.deposit_count))" "$2")" &&
+        test "$(tar -xzOf "$4" --wildcards "*/recovery.json" | sha256sum)" = "$(sha256sum < "$1")"' \
+        _ "$CASE_RECOVERY" "$KIT_RECOVERY" "$NEXT_DEPOSIT_COUNT" "$CASE_PACKAGE"
 # The kit works on a fork: the real L2 is untouched (the delta certificate is what moves the funds).
 check "the real L2 is untouched: the holders still hold their USDC.e" \
     test "$(l2_call "$CIRCLE_USDCE" "totalSupply()(uint256)")" = "$CIRCLE_TOTAL_DEPOSITED"
@@ -321,17 +359,21 @@ check "delta-exits.json has exactly the ${PAYOUT_COUNT} new exits (the legacy ca
     jq -e --argjson n "$PAYOUT_COUNT" '.bridge_exits | length == $n' "$DELTA_EXITS" >/dev/null
 check "the delta exits equal the kit's outputs (its BridgeEvents) field by field and in the same order" \
     test "$(jq '.bridge_exits' "$DELTA_EXITS" | normalize_exits)" = "$(jq '.outputs' "$KIT_RECOVERY" | outputs_as_exits)"
-check "every exit is a Message with amount 0 whose metadata is plain hex (no 0x)" \
+check "every exit is a Message with amount 0 (Circle's payouts carry no ETH) whose metadata is plain hex (no 0x)" \
     jq -e '.bridge_exits | all(.leaf_type == "Message" and .amount == "0" and (.metadata | test("^[0-9a-f]{128}$")))' "$DELTA_EXITS" >/dev/null
-check "step C is unchanged: a Message consumes no SC-locked balance" \
+check "step C is unchanged: a value-less Message consumes no SC-locked balance" \
     diff <(jq -S . "${PREV_STATE}/step-c-sc-locked-values.json") <(jq -S . "${RECOVERIES_OUT}/step-c-sc-locked-values.json")
-check "step F checks are unchanged: a Message moves no token amount" \
+check "step F checks are unchanged: a value-less Message moves no token amount" \
     diff <(jq -S . "${PREV_STATE}/step-f-checks.json") <(jq -S . "${RECOVERIES_OUT}/step-f-checks.json")
 check "the ledger keeps the ${PREV_LEDGER_LEN} legacy entries of deltas 1 and 2 unchanged" \
     diff <(jq -S . "${PREV_STATE}/recoveries-applied.json") <(jq -S --argjson n "$PREV_LEDGER_LEN" '.[0:$n]' "${RECOVERIES_OUT}/recoveries-applied.json")
 check "... and adds one version-1 Message entry per output" \
     jq -e --argjson p "$PREV_LEDGER_LEN" --argjson n "$PAYOUT_COUNT" \
         '(length == $p + $n) and (.[$p:] | all(.version == 1 and .leafType == "Message" and .amount == "0"))' \
+        "${RECOVERIES_OUT}/recoveries-applied.json" >/dev/null
+check "... recording the deposit counts ${NEXT_DEPOSIT_COUNT}..$((NEXT_DEPOSIT_COUNT + PAYOUT_COUNT - 1)) of the outputs" \
+    jq -e --argjson p "$PREV_LEDGER_LEN" --argjson next "$NEXT_DEPOSIT_COUNT" \
+        '[.[$p:][].depositCount] == [range($next; $next + (length - $p))]' \
         "${RECOVERIES_OUT}/recoveries-applied.json" >/dev/null
 check "the legacy ledger entries have no version (old format) and the same case hashes as before" \
     jq -e --argjson p "$PREV_LEDGER_LEN" '.[0:$p] | all(has("version") | not)' "${RECOVERIES_OUT}/recoveries-applied.json" >/dev/null
@@ -355,8 +397,14 @@ check "re-running --step recoveries into the same output dir is refused" \
 rm -f "$RERUN_LOG" "$RERUN_CONFIG"
 rm -rf "$RERUN_DIR"
 
-# Negative test: a version-1 case the step must refuse writes nothing. A Message that carries value is not
-# supported (nothing accounts for it), and neither is a Message sent from another network than the L2.
+# Negative tests: a version-1 case the step must refuse writes nothing.
+#   - over-budget: the first message carries 1 wei of ETH, paid (origin_SC_funds) by ZkMinterBurner, which held
+#     no ETH at the L2 snapshot. A Message may carry ETH, but no contract can pay more than it held. The ETH
+#     still pending after deltas 1 and 2 covers 1 wei, so it is the per-contract budget that refuses it.
+#   - stale-deposit-count: every deposit_count one lower, as in a case built on an older exit tree (the first
+#     one is a leaf delta 2 already has): anti-replay.
+#   - from-another-network: a Message sent from another network than the L2.
+# neg_case <name> <jq filter on the case's recovery.json> <expected error (grep -i)>
 neg_case() {
     local name="$1" filter="$2" expect="$3" cases out cfg log rc
     cases="${TMP_DIR}/recoveries-cases-negative-${INDEX}-${name}"
@@ -364,20 +412,27 @@ neg_case() {
     cfg="${TMP_DIR}/exit_certificate-kurtosis-delta-${INDEX}-negative-${name}.json"
     rm -rf "$cases" "$out"
     mkdir -p "${cases}/bad"
-    jq "$filter" "$KIT_RECOVERY" > "${cases}/bad/recovery.json"
+    jq "$filter" "$CASE_RECOVERY" > "${cases}/bad/recovery.json"
     printf '#!/bin/bash\n# e2e negative case %s: not executed by exit_certificate\n' "$name" > "${cases}/bad/move.sh"
     jq --arg cases "./recoveries-cases-negative-${INDEX}-${name}" --arg o "./output-kurtosis-delta-${INDEX}-negative-${name}" \
         '.options.recoveriesPath = $cases | .options.outputDir = $o' "$DELTA_CONFIG" > "$cfg"
     log="$(mktemp)"
     if "$BINARY" --config "$cfg" --step recoveries >"$log" 2>&1; then rc=0; else rc=$?; fi
-    check "a Message ${name} makes the step fail ('${expect}')" \
+    check "a version-1 case ${name} makes the step fail ('${expect}')" \
         bash -c '[[ "$1" -ne 0 ]] && grep -qi -- "$2" "$3"' _ "$rc" "$expect" "$log"
     check "... and nothing is written (all or nothing)" test ! -e "${out}/recoveries"
     if [[ "$rc" -eq 0 ]] || ! grep -qi -- "$expect" "$log"; then tail -n 5 "$log" >&2; fi
     rm -f "$log" "$cfg"
     rm -rf "$cases"
 }
-neg_case "with-value" '.outputs[0].amount = "1"' "amount"
+NATIVE_PENDING="$(jq -r '[.[] | select(.originNetwork == 0 and (.originTokenAddress | ascii_downcase) == "0x0000000000000000000000000000000000000000")][0].pendingSCLockedBalance // "0"' \
+    "${PREV_STATE}/step-c-sc-locked-values.json")"
+check "precondition of the over-budget case: ETH still pending after deltas 1 and 2 (${NATIVE_PENDING} wei) covers 1 wei" \
+    test "$(echo "${NATIVE_PENDING} >= 1" | bc)" = "1"
+neg_case "over-budget" ".outputs[0].amount = \"1\" | .origin_SC_funds = [{address: \"${CIRCLE_ZK_MINTER_BURNER}\",
+    tokens: [{token_info: {origin_network: 0, origin_token_address: \"0x0000000000000000000000000000000000000000\"},
+              amount: \"1\"}]}]" "short by"
+neg_case "stale-deposit-count" '.outputs |= map(.deposit_count -= 1)' "stale or replayed"
 neg_case "from-another-network" '.outputs[0].token_info.origin_network = 0' "network"
 
 if [[ "$FAILURES" -ne 0 ]]; then
@@ -433,6 +488,9 @@ check "delta-manifest.json links the roots before/after" \
     jq -e --arg b "$PREV_LER" --arg a "$DELTA_LER" '.rootBefore == $b and .rootAfter == $a' "$MANIFEST" >/dev/null
 check "delta-manifest.json: the added leaves come after the previous ones" \
     jq -e --argjson n "$PREV_EXITS" '.firstDepositCount >= $n' "$MANIFEST" >/dev/null
+check "delta-manifest.json: the exits got the deposit counts of the case (${NEXT_DEPOSIT_COUNT}..$((NEXT_DEPOSIT_COUNT + PAYOUT_COUNT - 1)))" \
+    jq -e --argjson f "$NEXT_DEPOSIT_COUNT" --argjson n "$PAYOUT_COUNT" \
+        '.firstDepositCount == $f and .lastDepositCount == $f + $n - 1' "$MANIFEST" >/dev/null
 if [[ -n "$PREV_RUN_ARCHIVE" ]]; then
     check "the tool found the latest archived run from the archive base: delta-manifest.json records ${PREV_RUN_ARCHIVE}" \
         jq -e --arg u "$PREV_RUN_ARCHIVE" '.previousRunArchive == $u and (.previousRunArchiveManifestSha256 | length == 64)' \

@@ -119,12 +119,13 @@ jobs:
           persist-credentials: false
 
       # Delta 3 (Circle USDC, Message exits) needs the kit that writes recovery.json version 1: the
-      # multiple-outputs format, pinned to its commit (bump it deliberately when the kit changes).
+      # multiple-outputs format with the top-level origin_SC_funds (kit PR #6), pinned to its commit (bump it
+      # deliberately when the kit changes).
       - name: Checkout zkevm-proof-of-ownership-kit (recovery.json version 1)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           repository: agglayer/zkevm-proof-of-ownership-kit
-          ref: e0945489831dd78559efbf95bf6546684610df84
+          ref: 198ff5c819859474d1e0514056b871306ba94632
           path: zkevm-proof-of-ownership-kit-v1
           persist-credentials: false
 
