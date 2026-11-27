@@ -2,7 +2,10 @@ package exit_certificate
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +25,8 @@ import (
 var (
 	recSender   = common.HexToAddress("0x00000000000000000000000000000000000000c1") // L2 contract sending messages
 	recL1Target = "0x5555555555555555555555555555555555555555"
+	// recSCContract is the contract the funds of the test version-1 cases come from (origin_SC_funds).
+	recSCContract = common.HexToAddress("0x00000000000000000000000000000000000000c5")
 )
 
 // v1Output renders one version-1 output as the kit writes it.
@@ -40,16 +45,87 @@ func v1Output(leafType string, originNetwork uint32, origin common.Address, dest
 	return string(b)
 }
 
-func v1Doc(outputs ...string) string {
-	return `{"version":1,"outputs":[` + strings.Join(outputs, ",") + `]}`
+// v1Doc renders a version-1 document whose outputs get deposit counts 0, 1, ... (v1DocAt).
+func v1Doc(outputs ...string) string { return v1DocAt(0, outputs...) }
+
+// v1DocAt renders a version-1 document as the kit writes it: each output without a deposit_count gets first +
+// its index, and origin_SC_funds is one contract (recSCContract) paying, per token, what the outputs bridge (a
+// Transfer its token_info, a Message ETH; outputs of amount 0 or unparsable are skipped).
+func v1DocAt(first uint32, outputs ...string) string {
+	objs := make([]json.RawMessage, len(outputs))
+	totals := map[tokenKey]*big.Int{}
+	var order []tokenKey
+	for i, o := range outputs {
+		var m map[string]any
+		dec := json.NewDecoder(strings.NewReader(o))
+		dec.UseNumber()
+		if err := dec.Decode(&m); err != nil {
+			objs[i] = json.RawMessage(o)
+			continue
+		}
+		if _, ok := m["deposit_count"]; !ok {
+			m["deposit_count"] = first + uint32(i)
+		}
+		b, err := json.Marshal(m)
+		if err != nil {
+			panic(err)
+		}
+		objs[i] = b
+		s, _ := m["amount"].(string)
+		amount, ok := new(big.Int).SetString(s, 10)
+		if !ok || amount.Sign() <= 0 {
+			continue
+		}
+		k := recoveryETH
+		if m["leaf_type"] == "Transfer" {
+			ti, _ := m["token_info"].(map[string]any)
+			addr, _ := ti["origin_token_address"].(string)
+			net, _ := ti["origin_network"].(json.Number)
+			n, _ := net.Int64()
+			k = tokenKey{uint32(n), common.HexToAddress(addr)}
+		}
+		if totals[k] == nil {
+			totals[k] = new(big.Int)
+			order = append(order, k)
+		}
+		totals[k].Add(totals[k], amount)
+	}
+	funds := []any{}
+	if len(order) > 0 {
+		tokens := make([]any, 0, len(order))
+		for _, k := range order {
+			tokens = append(tokens, map[string]any{
+				"token_info": map[string]any{"origin_network": k.OriginNetwork,
+					"origin_token_address": k.OriginTokenAddress.Hex()},
+				"amount": totals[k].String(),
+			})
+		}
+		funds = append(funds, map[string]any{"address": recSCContract.Hex(), "tokens": tokens})
+	}
+	b, err := json.Marshal(map[string]any{"version": 1, "outputs": objs, "origin_SC_funds": funds})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// testRecEnv is the environment of the unit tests: deposit counts start at 0 and every contract holds plenty.
+func testRecEnv() *recoveriesEnv {
+	return &recoveriesEnv{
+		L2NetworkID: recL2Network,
+		SCBalance: func(common.Address, common.Address) (*big.Int, error) {
+			return new(big.Int).Lsh(big.NewInt(1), 128), nil
+		},
+	}
 }
 
 // v1Case parses a version-1 document into a case, as loadRecoveryCase does.
 func v1Case(t *testing.T, source, hash, doc string) recoveryCase {
 	t.Helper()
-	exits, err := parseRecoveryFileV1([]byte(doc))
+	rec, err := parseRecoveryFileV1([]byte(doc))
 	require.NoError(t, err)
-	return recoveryCase{Source: source, CaseHash: hash, RecoveryHash: hexSHA256([]byte(doc)), Exits: exits}
+	return recoveryCase{Source: source, CaseHash: hash, RecoveryHash: hexSHA256([]byte(doc)), Exits: rec.Exits,
+		OriginSCFunds: rec.OriginSCFunds}
 }
 
 func TestRecoveryFileVersion(t *testing.T) {
@@ -78,8 +154,13 @@ func TestRecoveryFileVersion(t *testing.T) {
 func TestParseRecoveryFileV1(t *testing.T) {
 	transfer := v1Output("Transfer", 0, recOrigin, 0, recDest1, "50", "0x")
 	message := v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xbeef")
-	exits, err := parseRecoveryFileV1([]byte(v1Doc(transfer, message)))
+	rec, err := parseRecoveryFileV1([]byte(v1DocAt(7, transfer, message)))
 	require.NoError(t, err)
+	exits := rec.Exits
+	require.Equal(t, uint32(7), exits[0].DepositCount)
+	require.Equal(t, uint32(8), exits[1].DepositCount)
+	require.Equal(t, []recoverySCFunds{{Contract: recSCContract,
+		Tokens: []recoverySCToken{{Token: tokenKey{0, recOrigin}, Amount: big.NewInt(50)}}}}, rec.OriginSCFunds)
 	require.Len(t, exits, 2)
 	require.Equal(t, bridgetypes.LeafTypeAsset, exits[0].LeafType)
 	require.Equal(t, tokenKey{0, recOrigin}, exits[0].TokenInfo)
@@ -96,9 +177,13 @@ func TestParseRecoveryFileV1(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := map[string]struct{ doc, want string }{
-		"no outputs":    {`{"version":1,"outputs":[]}`, "non-empty list"},
-		"unknown top":   {`{"version":1,"outputs":[` + transfer + `],"extra":1}`, "unknown field"},
-		"deposit_count": {v1Doc(strings.Replace(transfer, `"amount"`, `"deposit_count":1,"amount"`, 1)), "unknown field"},
+		"no outputs":             {`{"version":1,"outputs":[]}`, "non-empty list"},
+		"unknown top":            {`{"version":1,"outputs":[` + transfer + `],"extra":1}`, "unknown field"},
+		"missing deposit_count":  {strings.Replace(v1Doc(transfer), `"deposit_count":0,`, ``, 1), "missing field: deposit_count"},
+		"negative deposit_count": {v1Doc(strings.Replace(transfer, `"amount"`, `"deposit_count":-1,"amount"`, 1)), "deposit_count"},
+		"string deposit_count":   {v1Doc(strings.Replace(transfer, `"amount"`, `"deposit_count":"1","amount"`, 1)), "deposit_count"},
+		"deposit_count above uint32": {
+			v1Doc(strings.Replace(transfer, `"amount"`, `"deposit_count":4294967296,"amount"`, 1)), "deposit_count"},
 		"unknown token_info field": {
 			v1Doc(strings.Replace(transfer, `"origin_network"`, `"x":1,"origin_network"`, 1)), "unknown field"},
 		"missing leaf_type":   {v1Doc(strings.Replace(transfer, `"leaf_type":"Transfer",`, ``, 1)), "missing field: leaf_type"},
@@ -135,8 +220,6 @@ func TestParseRecoveryFileV1(t *testing.T) {
 			"destination_network"},
 		"transfer to another network": {v1Doc(v1Output("Transfer", 0, recOrigin, 5, recDest1, "1", "0x")), "must be 0"},
 		"transfer of zero":            {v1Doc(v1Output("Transfer", 0, recOrigin, 0, recDest1, "0", "0x")), "Transfer of 0"},
-		"message with value": {
-			v1Doc(v1Output("Message", recL2Network, recSender, 0, recL1Target, "1", "0xbeef")), "must have amount 0"},
 		"message with empty metadata": {
 			v1Doc(v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0x")), "non-empty metadata"},
 		"message from the zero address": {
@@ -155,7 +238,6 @@ func TestParseRecoveryFileV1(t *testing.T) {
 		v1Output("Transfer", 0, recOrigin, 0, recDest1, "0", "0x"),
 		v1Output("Message", recL2Network, recSender, 0, recL1Target, "1", "0x"))))
 	require.ErrorContains(t, err, "outputs[1].amount")
-	require.ErrorContains(t, err, "outputs[2].amount")
 	require.ErrorContains(t, err, "outputs[2].metadata")
 }
 
@@ -199,7 +281,7 @@ func TestApplyRecoveries_V1OutputsBecomeExitsInOrder(t *testing.T) {
 		rendered[i] = v1Output(o.leafType, o.originNetwork, o.origin, 0, o.dest, o.amount, o.metadata)
 	}
 	st := newRecoveriesState()
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{v1Case(t, "v1.tgz", "h-v1", v1Doc(rendered...))})
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{v1Case(t, "v1.tgz", "h-v1", v1Doc(rendered...))})
 	require.NoError(t, err)
 
 	require.Len(t, out.Exits, len(outputs))
@@ -234,12 +316,13 @@ func TestApplyRecoveries_V1OutputsBecomeExitsInOrder(t *testing.T) {
 
 func TestApplyRecoveries_V1MixedWithLegacy(t *testing.T) {
 	st := newRecoveriesState()
-	v1 := v1Doc(
+	v1 := v1DocAt(2, // after the 2 merged legacy exits
+
 		v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0x01"),
 		v1Output("Transfer", 0, recOrigin, 0, recDest1, "40", "0x"),
 		v1Output("Transfer", 0, common.Address{}, 0, recDest2, "10", "0x"),
 	)
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		v1Case(t, "v1.tgz", "h-v1", v1),
 		recCase("legacy.tgz", "h-legacy", recLocked1, recDest1,
 			RecoveryFund{Token: "native", Amount: "100"}, RecoveryFund{Token: recWrapped.Hex(), Amount: "10"}),
@@ -310,7 +393,7 @@ func TestApplyRecoveries_V1Errors_LeaveStateUntouched(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			st := newRecoveriesState()
 			before := newRecoveriesState()
-			_, err := applyRecoveries(st, recL2Network, []recoveryCase{
+			_, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 				recCase("ok", "h-ok", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 				v1Case(t, "bad", "h-bad", tc.doc),
 			})
@@ -323,7 +406,7 @@ func TestApplyRecoveries_V1Errors_LeaveStateUntouched(t *testing.T) {
 // A Message moves no balance: it does not depend on the LBT nor on the pending balances.
 func TestApplyRecoveries_V1MessageOnly(t *testing.T) {
 	st := &recoveriesState{}
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{v1Case(t, "m", "h",
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{v1Case(t, "m", "h",
 		v1Doc(v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xbeef")))})
 	require.NoError(t, err)
 	require.Empty(t, out.Report)
@@ -332,7 +415,7 @@ func TestApplyRecoveries_V1MessageOnly(t *testing.T) {
 	require.Equal(t, common.Address{}, st.Ledger[0].Token)
 
 	// the same case again is skipped, as a legacy one.
-	out, err = applyRecoveries(st, recL2Network, []recoveryCase{v1Case(t, "m-again", "h",
+	out, err = applyRecoveries(st, testRecEnv(), []recoveryCase{v1Case(t, "m-again", "h",
 		v1Doc(v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xbeef")))})
 	require.NoError(t, err)
 	require.Equal(t, []string{"m-again"}, out.Skipped)
@@ -386,7 +469,7 @@ func TestApplyRecoveries_LegacyLedgerStillRecognised(t *testing.T) {
 	st := newRecoveriesState()
 	require.NoError(t, json.Unmarshal([]byte(legacyLedger), &st.Ledger))
 
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("old-again.tgz", "h-old", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"}),
 		v1Case(t, "new.tgz", "h-new", v1Doc(v1Output("Transfer", 0, recOrigin, 0, recDest1, "5", "0x"))),
 	})
@@ -396,7 +479,7 @@ func TestApplyRecoveries_LegacyLedgerStillRecognised(t *testing.T) {
 	require.Equal(t, recNativePending, st.SC[0].PendingSCLockedBalance, "the skipped legacy case moves nothing")
 
 	// the legacy contract+token+destination guard still reads the old entries.
-	_, err = applyRecoveries(newLedgerState(t, legacyLedger), recL2Network, []recoveryCase{
+	_, err = applyRecoveries(newLedgerState(t, legacyLedger), testRecEnv(), []recoveryCase{
 		recCase("repack.tgz", "h-repack", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.ErrorContains(t, err, "already recovered")
 
@@ -416,9 +499,9 @@ func newLedgerState(t *testing.T, ledger string) *recoveriesState {
 func TestApplyRecoveries_V1RepackagedCaseRefused(t *testing.T) {
 	doc := v1Doc(v1Output("Transfer", 0, recOrigin, 0, recDest1, "5", "0x"))
 	st := newRecoveriesState()
-	_, err := applyRecoveries(st, recL2Network, []recoveryCase{v1Case(t, "a.tgz", "h-a", doc)})
+	_, err := applyRecoveries(st, testRecEnv(), []recoveryCase{v1Case(t, "a.tgz", "h-a", doc)})
 	require.NoError(t, err)
-	_, err = applyRecoveries(st, recL2Network, []recoveryCase{v1Case(t, "b.tgz", "h-b", doc)})
+	_, err = applyRecoveries(st, testRecEnv(), []recoveryCase{v1Case(t, "b.tgz", "h-b", doc)})
 	require.ErrorContains(t, err, "already in the recoveries ledger under case hash h-a")
 }
 
@@ -431,23 +514,27 @@ func TestRunRecoveries_V1EndToEndAndChaining(t *testing.T) {
 	writeJSONFile(t, first, fileStep0LBT, st.LBT)
 	writeJSONFile(t, first, fileStepCSCLockedValues, st.SC)
 	writeJSONFile(t, first, fileStepFChecks, st.Checks)
+	writeJSONFile(t, first, fileStep0TargetBlock, uint64(1234))
+	// each previous run holds its exit tree: 5 leaves after the first run, + 1 legacy exit (delta 1), + 2 (delta 2).
+	writeLiteTree(t, filepath.Join(first, fileStepGLiteDB), baseLeaves(5))
+	rpc := balanceRPCStub(t, 1234)
 
-	v1 := v1Doc(
+	v1 := v1DocAt(6,
 		v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xabcd"),
 		v1Output("Transfer", 0, recOrigin, 0, recDest2, "20", "0x"),
 	)
-	v1b := v1Doc(v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xabce"))
+	v1b := v1DocAt(8, v1Output("Message", recL2Network, recSender, 0, recL1Target, "7", "0xabce"))
 	run := func(name, previous string, packages map[string]map[string]string) (string, error) {
 		casesDir := filepath.Join(root, "cases-"+name)
 		require.NoError(t, os.MkdirAll(casesDir, 0o755))
 		for file, content := range packages {
 			writeKitTgz(t, casesDir, file, content)
 		}
-		cfg := &Config{L2NetworkID: recL2Network, Options: Options{
+		cfg := &Config{L2NetworkID: recL2Network, L2RPCURL: rpc, Options: Options{
 			DeltaMode: true, PreviousRun: previous, OutputDir: filepath.Join(root, "output-"+name),
 			RecoveriesPath: casesDir,
 		}}
-		return filepath.Join(cfg.Options.OutputDir, dirRecoveries), runRecoveries(cfg)
+		return filepath.Join(cfg.Options.OutputDir, dirRecoveries), runRecoveries(t.Context(), cfg)
 	}
 	legacyPkg := map[string]string{"recovery.json": recDoc, "move.sh": "m1"}
 	v1Pkg := map[string]string{"recovery.json": v1, "move.sh": "m2", "case-hash.txt": "x", "signatures.json": "[]"}
@@ -458,6 +545,8 @@ func TestRunRecoveries_V1EndToEndAndChaining(t *testing.T) {
 	exits, err := LoadDeltaExits(filepath.Join(out1, fileRecoveriesDelta), recL2Network)
 	require.NoError(t, err)
 	require.Len(t, exits, 1)
+	require.FileExists(t, filepath.Join(out1, fileStep0TargetBlock), "the snapshot block is carried to the next delta")
+	writeLiteTree(t, filepath.Join(filepath.Dir(out1), fileStepGLiteDB), baseLeaves(6))
 
 	// delta 2: the legacy case again (skipped) + a version-1 case.
 	out2, err := run("delta-2", filepath.Dir(out1), map[string]map[string]string{"legacy.tgz": legacyPkg, "v1.tgz": v1Pkg})
@@ -484,7 +573,21 @@ func TestRunRecoveries_V1EndToEndAndChaining(t *testing.T) {
 	report, err := os.ReadFile(filepath.Join(out2, fileRecoveriesReport))
 	require.NoError(t, err)
 	require.Contains(t, string(report), "Transfer: 1, Message: 1")
-	require.Contains(t, string(report), "carry no value")
+	require.Contains(t, string(report), "move only the ETH they carry")
+	require.Contains(t, string(report), recSCContract.Hex())
+	require.Equal(t, uint32(6), *ledger[1].DepositCount)
+	require.Equal(t, uint32(7), *ledger[2].DepositCount)
+	var scFunds []RecoveredSCFunds
+	require.NoError(t, loadJSON(out2, fileRecoveriesSCFunds, &scFunds))
+	require.Equal(t, []RecoveredSCFunds{{Contract: recSCContract, OriginNetwork: 0, OriginTokenAddress: recOrigin,
+		L2Token: recWrapped, SnapshotBalance: "1000", Recovered: "20"}}, scFunds)
+	writeLiteTree(t, filepath.Join(filepath.Dir(out2), fileStepGLiteDB), baseLeaves(8))
+
+	// a case built on an older tree (its deposit counts are taken) is refused, and nothing is written.
+	_, err = run("stale", filepath.Dir(out2), map[string]map[string]string{"v1c.tgz": {"recovery.json": v1DocAt(6,
+		v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xabcf")), "move.sh": "m4"}})
+	require.ErrorContains(t, err, "deposit_count 6, but this exit gets deposit count 8")
+	require.NoDirExists(t, filepath.Join(root, "output-stale", dirRecoveries))
 
 	// delta 3: both again (skipped) + another version-1 case, Message only.
 	out3, err := run("delta-3", filepath.Dir(out2), map[string]map[string]string{
@@ -497,6 +600,13 @@ func TestRunRecoveries_V1EndToEndAndChaining(t *testing.T) {
 	require.Equal(t, []byte{0xab, 0xce}, exits[0].Metadata)
 	require.NoError(t, loadJSON(out3, fileRecoveriesLedger, &ledger))
 	require.Len(t, ledger, 4)
+	// the Message carries 7 wei of ETH: charged to ETH (pending 900 → 893) and to the contract (ETH: 7 of 1000).
+	require.NoError(t, loadJSON(out3, fileStepCSCLockedValues, &sc))
+	require.Equal(t, "893", sc[0].PendingSCLockedBalance)
+	require.NoError(t, loadJSON(out3, fileRecoveriesSCFunds, &scFunds))
+	require.Len(t, scFunds, 2, "the token entry is carried, the ETH one added")
+	require.Equal(t, "20", scFunds[0].Recovered)
+	require.Equal(t, RecoveredSCFunds{Contract: recSCContract, SnapshotBalance: "1000", Recovered: "7"}, scFunds[1])
 }
 
 // Step F: a Message without value is in no token group, so it never enters the per-token budget check; were
@@ -565,7 +675,7 @@ func TestDeltaMessageLeafHash_MatchesBridgeContract(t *testing.T) {
 	doc := v1Doc(v1Output("Message", l2Network, sender, 0, l1Escrow.Hex(), "0", "0x"+common.Bytes2Hex(metadata)))
 
 	// kit output → recoveries → delta exits file → delta leaves, as the tool does.
-	out, err := applyRecoveries(&recoveriesState{}, l2Network, []recoveryCase{v1Case(t, "circle", "h", doc)})
+	out, err := applyRecoveries(&recoveriesState{}, &recoveriesEnv{L2NetworkID: l2Network}, []recoveryCase{v1Case(t, "circle", "h", doc)})
 	require.NoError(t, err)
 	file := filepath.Join(t.TempDir(), fileRecoveriesDelta)
 	b, err := json.Marshal(DeltaExitsFile{BridgeExits: out.Exits})
@@ -593,6 +703,16 @@ func TestDeltaMessageLeafHash_MatchesBridgeContract(t *testing.T) {
 		l1Escrow, big.NewInt(0), crypto.Keccak256Hash(metadata))
 	require.NoError(t, err)
 	require.NotEqual(t, common.Hash(asTransfer), leaves[0].Hash())
+
+	// a Message carrying ETH (bridgeMessage is payable): the amount is part of the leaf, as the contract hashes it.
+	withValue := *exits[0]
+	withValue.Amount = big.NewInt(5)
+	valueLeaves := liteLeavesFromExits([]*agglayertypes.BridgeExit{&withValue}, 10, 3, 0, common.Address{}, raw)
+	wantValue, err := bridge.GetLeafValue(&bind.CallOpts{}, bridgetypes.LeafTypeMessage.Uint8(), l2Network, sender, 0,
+		l1Escrow, big.NewInt(5), crypto.Keccak256Hash(metadata))
+	require.NoError(t, err)
+	require.Equal(t, common.Hash(wantValue), valueLeaves[0].Hash())
+	require.NotEqual(t, common.Hash(want), valueLeaves[0].Hash())
 }
 
 // Two exits of one delta that would be the same leaf are refused by the delta mode (rejectDuplicateLeaves), so
@@ -651,7 +771,7 @@ func TestApplyRecoveries_DuplicateExitsRefused(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			st := newRecoveriesState()
-			_, err := applyRecoveries(st, recL2Network, tc.cases(t))
+			_, err := applyRecoveries(st, testRecEnv(), tc.cases(t))
 			for _, w := range tc.want {
 				require.ErrorContains(t, err, w)
 			}
@@ -662,8 +782,8 @@ func TestApplyRecoveries_DuplicateExitsRefused(t *testing.T) {
 	// Exits that differ in anything that goes into the leaf are fine: amount, destination, or — when both
 	// carry one — a Message's or Transfer's metadata.
 	st := newRecoveriesState()
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
-		v1Case(t, "a.tgz", "h-a", v1Doc(transfer, message,
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
+		v1Case(t, "a.tgz", "h-a", v1DocAt(1, transfer, message,
 			v1Output("Transfer", 0, recOrigin, 0, recDest1, "40", "0xaabbcc"),
 			v1Output("Transfer", 0, recOrigin, 0, recDest2, "40", "0xaabb"),
 			v1Output("Message", recL2Network, recSender, 0, recL1Target, "0", "0xbeee"))),
@@ -671,4 +791,35 @@ func TestApplyRecoveries_DuplicateExitsRefused(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, out.Exits, 6)
+}
+
+// balanceRPCStub serves eth_getBalance and eth_call (balanceOf) at the given block: every contract holds 1000
+// of every token. Any other block is an error.
+func balanceRPCStub(t *testing.T, block uint64) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+			Params []any           `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		resp := map[string]any{"jsonrpc": "2.0", "id": req.ID}
+		switch {
+		case len(req.Params) != 2 || req.Params[1] != toBlockTag(block):
+			resp["error"] = map[string]any{"code": -32000, "message": fmt.Sprintf("unexpected params %v", req.Params)}
+		case req.Method == "eth_getBalance":
+			resp["result"] = "0x3e8"
+		case req.Method == "eth_call":
+			resp["result"] = "0x" + common.Bytes2Hex(common.LeftPadBytes(big.NewInt(1000).Bytes(), 32))
+		default:
+			resp["error"] = map[string]any{"code": -32601, "message": "method not found"}
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(resp))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
 }

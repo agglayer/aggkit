@@ -90,7 +90,7 @@ func TestParseRecoveryFile(t *testing.T) {
 
 func TestApplyRecoveries_UpdatesBalances(t *testing.T) {
 	st := newRecoveriesState()
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("c1", "h1", recLocked1, recDest1,
 			RecoveryFund{Token: "native", Amount: "100"}, RecoveryFund{Token: recWrapped.Hex(), Amount: "50"}),
 		recCase("c2", "h2", recLocked2, recDest1, RecoveryFund{Token: "native", Amount: "30"}),
@@ -127,10 +127,10 @@ func TestApplyRecoveries_UpdatesBalances(t *testing.T) {
 func TestApplyRecoveries_Idempotent(t *testing.T) {
 	st := newRecoveriesState()
 	c := recCase("c1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"})
-	_, err := applyRecoveries(st, recL2Network, []recoveryCase{c})
+	_, err := applyRecoveries(st, testRecEnv(), []recoveryCase{c})
 	require.NoError(t, err)
 
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{c}) // same case hash, again
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{c}) // same case hash, again
 	require.NoError(t, err)
 	require.Equal(t, []string{"c1"}, out.Skipped)
 	require.Empty(t, out.Applied)
@@ -143,7 +143,7 @@ func TestApplyRecoveries_SameCaseTwiceInBatch(t *testing.T) {
 	c := recCase("c1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"})
 	dup := c
 	dup.Source = "c1-copy"
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{c, dup})
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{c, dup})
 	require.NoError(t, err)
 	require.Equal(t, []string{"c1-copy"}, out.Skipped)
 	require.Equal(t, "900", st.SC[0].PendingSCLockedBalance)
@@ -181,7 +181,7 @@ func TestApplyRecoveries_Errors_LeaveStateUntouched(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			st := newRecoveriesState()
-			_, err := applyRecoveries(st, recL2Network, tc.cases)
+			_, err := applyRecoveries(st, testRecEnv(), tc.cases)
 			require.ErrorContains(t, err, tc.want)
 			require.Equal(t, newRecoveriesState(), st, "state must not change on error (all or nothing)")
 		})
@@ -190,10 +190,10 @@ func TestApplyRecoveries_Errors_LeaveStateUntouched(t *testing.T) {
 
 func TestApplyRecoveries_RejectsContractAlreadyInLedger(t *testing.T) {
 	st := newRecoveriesState()
-	_, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	_, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("first", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.NoError(t, err)
-	_, err = applyRecoveries(st, recL2Network, []recoveryCase{
+	_, err = applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("second", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"})})
 	require.ErrorContains(t, err, "already recovered")
 	require.ErrorContains(t, err, "first")
@@ -204,7 +204,7 @@ func TestApplyRecoveries_RejectsContractAlreadyInLedger(t *testing.T) {
 // the pending balance of the token.
 func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
 	st := newRecoveriesState()
-	out, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	out, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("owner1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "10"}),
 		recCase("owner2", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "20"}),
 	})
@@ -213,19 +213,19 @@ func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
 	require.Len(t, st.Ledger, 2)
 
 	// a later batch: a third owner is fine, a repeat of owner 1 is not.
-	_, err = applyRecoveries(st, recL2Network, []recoveryCase{
+	_, err = applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("owner3", "h3", recLocked1, "0x5555555555555555555555555555555555555555",
 			RecoveryFund{Token: "native", Amount: "30"}),
 	})
 	require.NoError(t, err)
-	_, err = applyRecoveries(st, recL2Network, []recoveryCase{
+	_, err = applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("owner1-again", "h4", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 	})
 	require.ErrorContains(t, err, "already recovered")
 
 	// the pending balance still bounds the sum over all the owners.
 	st2 := newRecoveriesState()
-	_, err = applyRecoveries(st2, recL2Network, []recoveryCase{
+	_, err = applyRecoveries(st2, testRecEnv(), []recoveryCase{
 		recCase("owner1", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "600"}),
 		recCase("owner2", "h2", recLocked1, recDest2, RecoveryFund{Token: "native", Amount: "401"}),
 	})
@@ -235,7 +235,7 @@ func TestApplyRecoveries_SameContractDifferentOwners(t *testing.T) {
 func TestApplyRecoveries_InconsistentStepF(t *testing.T) {
 	st := newRecoveriesState()
 	st.Checks[0].SkippedSCLockedAmount = "10" // less than the pending in step C
-	_, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	_, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("c", "h", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "100"})})
 	require.ErrorContains(t, err, "inconsistent")
 }
@@ -332,7 +332,7 @@ func TestRunRecoveries_EndToEndAndChaining(t *testing.T) {
 	cfg := &Config{L2NetworkID: 7, Options: Options{
 		DeltaMode: true, PreviousRun: first, OutputDir: filepath.Join(root, "output-delta-1"), RecoveriesPath: casesDir,
 	}}
-	require.NoError(t, runRecoveries(cfg))
+	require.NoError(t, runRecoveries(t.Context(), cfg))
 
 	out1 := filepath.Join(cfg.Options.OutputDir, dirRecoveries)
 	// the previous run is untouched.
@@ -354,7 +354,7 @@ func TestRunRecoveries_EndToEndAndChaining(t *testing.T) {
 	cfgAgain.Options.OutputDir = filepath.Join(root, "output-delta-1b")
 	cfgAgain.Options.PreviousRun = cfg.Options.OutputDir // chained on delta 1 (which carries recoveries/ state)
 	// delta 1 is not a settled delta here, but recoveriesStateDir only needs its recoveries/ subdir.
-	require.NoError(t, runRecoveries(&cfgAgain))
+	require.NoError(t, runRecoveries(t.Context(), &cfgAgain))
 	require.NoFileExists(t, filepath.Join(cfgAgain.Options.OutputDir, dirRecoveries, fileRecoveriesDelta),
 		"an already-applied case produces no new exits")
 
@@ -364,14 +364,14 @@ func TestRunRecoveries_EndToEndAndChaining(t *testing.T) {
 	cfg2 := *cfg
 	cfg2.Options.PreviousRun = cfg.Options.OutputDir
 	cfg2.Options.OutputDir = filepath.Join(root, "output-delta-2")
-	require.ErrorContains(t, runRecoveries(&cfg2), "exceeds pendingSCLockedBalance") // 901 > 900 left
+	require.ErrorContains(t, runRecoveries(t.Context(), &cfg2), "exceeds pendingSCLockedBalance") // 901 > 900 left
 }
 
 // Two different cases for the same contract+token inside one batch (typically one case in two packagings)
 // get a message that says so, not the ledger one.
 func TestApplyRecoveries_SameContractTokenInBatchMessage(t *testing.T) {
 	st := newRecoveriesState()
-	_, err := applyRecoveries(st, recL2Network, []recoveryCase{
+	_, err := applyRecoveries(st, testRecEnv(), []recoveryCase{
 		recCase("x.tgz", "h1", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 		recCase("y/recovery.json", "h2", recLocked1, recDest1, RecoveryFund{Token: "native", Amount: "1"}),
 	})
@@ -394,7 +394,7 @@ func TestRunRecoveries_RefusesToOverwriteEarlierOutput(t *testing.T) {
 	cfg := &Config{L2NetworkID: 7, Options: Options{
 		DeltaMode: true, PreviousRun: first, OutputDir: filepath.Join(root, "output-delta-1"), RecoveriesPath: casesDir,
 	}}
-	require.NoError(t, runRecoveries(cfg))
+	require.NoError(t, runRecoveries(t.Context(), cfg))
 	exitsFile := filepath.Join(cfg.Options.OutputDir, dirRecoveries, fileRecoveriesDelta)
 	before, err := os.ReadFile(exitsFile)
 	require.NoError(t, err)
@@ -402,14 +402,14 @@ func TestRunRecoveries_RefusesToOverwriteEarlierOutput(t *testing.T) {
 	// a second batch arrives before the delta is generated: re-running into the same dir is refused ...
 	writeKitTgz(t, casesDir, "b.tgz", map[string]string{"recovery.json": `{"locked_contract":"` + recLocked2 +
 		`","destination":"` + recDest2 + `","funds":[{"token":"native","amount":"5"}]}`, "move.sh": "m2"})
-	require.ErrorContains(t, runRecoveries(cfg), "already holds the recoveries of an earlier")
+	require.ErrorContains(t, runRecoveries(t.Context(), cfg), "already holds the recoveries of an earlier")
 	after, err := os.ReadFile(exitsFile)
 	require.NoError(t, err)
 	require.Equal(t, string(before), string(after), "the earlier output is left untouched")
 
 	// ... and removing the directory regenerates it with every case of the delta.
 	require.NoError(t, os.RemoveAll(filepath.Join(cfg.Options.OutputDir, dirRecoveries)))
-	require.NoError(t, runRecoveries(cfg))
+	require.NoError(t, runRecoveries(t.Context(), cfg))
 	exits, err := LoadDeltaExits(exitsFile, 7)
 	require.NoError(t, err)
 	require.Len(t, exits, 2)
@@ -435,8 +435,8 @@ func TestRecoveriesStateDir(t *testing.T) {
 }
 
 func TestRunRecoveries_RequiresPathAndDistinctDirs(t *testing.T) {
-	require.ErrorContains(t, runRecoveries(&Config{Options: Options{}}), "recoveriesPath")
+	require.ErrorContains(t, runRecoveries(t.Context(), &Config{Options: Options{}}), "recoveriesPath")
 	d := t.TempDir()
 	require.ErrorContains(t,
-		runRecoveries(&Config{Options: Options{PreviousRun: d, OutputDir: d, RecoveriesPath: d}}), "different directories")
+		runRecoveries(t.Context(), &Config{Options: Options{PreviousRun: d, OutputDir: d, RecoveriesPath: d}}), "different directories")
 }

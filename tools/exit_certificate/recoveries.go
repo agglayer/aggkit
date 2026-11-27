@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -110,6 +111,9 @@ type RecoveryLedgerEntry struct {
 	Amount             string         `json:"amount"`
 	// Metadata is the version-1 output's leaf metadata (0x hex); absent = empty.
 	Metadata string `json:"metadata,omitempty"`
+	// DepositCount is the deposit count the version-1 output gets in its delta (its deposit_count, checked by
+	// applyRecoveries and again by the delta mode's Step G2); absent for the legacy format.
+	DepositCount *uint32 `json:"depositCount,omitempty"`
 }
 
 func (l *RecoveryLedgerEntry) isMessage() bool { return l.LeafType == recoveryLeafMessage }
@@ -121,9 +125,10 @@ type recoveryCase struct {
 	// RecoveryHash is the sha256 of recovery.json alone, whatever the packaging: the same case delivered as a
 	// .tgz and as its extracted files has the same RecoveryHash (but a different CaseHash without move.sh).
 	RecoveryHash string
-	// Recovery is set for the legacy format, Exits for version 1.
-	Recovery *RecoveryFile
-	Exits    []recoveryExit
+	// Recovery is set for the legacy format, Exits and OriginSCFunds for version 1.
+	Recovery      *RecoveryFile
+	Exits         []recoveryExit
+	OriginSCFunds []recoverySCFunds
 }
 
 func (c *recoveryCase) version() int {
@@ -139,6 +144,11 @@ type recoveriesState struct {
 	SC     []SCLockedValue
 	Checks []TokenBalanceCheck
 	Ledger []RecoveryLedgerEntry
+	// SCRecovered is the cumulative amount recovered per (contract, token) of the version-1 origin_SC_funds.
+	SCRecovered []RecoveredSCFunds
+	// TargetBlock is the L2 snapshot block (step-0-l2_target_block.json of the first run, carried delta to delta):
+	// the block the contracts' balances are read at. Nil when the state has none.
+	TargetBlock *uint64
 }
 
 // recoveryTokenReport is one row of the before/after summary.
@@ -153,6 +163,8 @@ type recoveriesOutcome struct {
 	Skipped []string // already-applied cases (idempotent re-runs)
 	Exits   []*agglayertypes.BridgeExit
 	Report  []recoveryTokenReport
+	// SCBudget is the per-(contract, token) summary of the version-1 origin_SC_funds of this run.
+	SCBudget []recoverySCBudgetRow
 }
 
 // --- loading cases ---
@@ -226,7 +238,10 @@ func loadRecoveryCase(file string) (*recoveryCase, error) {
 		if version == recoveryVersionLegacy {
 			c.Recovery, err = parseRecoveryFile(recJSON)
 		} else {
-			c.Exits, err = parseRecoveryFileV1(recJSON)
+			var v1 *recoveryV1
+			if v1, err = parseRecoveryFileV1(recJSON); err == nil {
+				c.Exits, c.OriginSCFunds = v1.Exits, v1.OriginSCFunds
+			}
 		}
 	}
 	if err != nil {
@@ -384,16 +399,19 @@ type lockedTokenKey struct {
 }
 
 // applyRecoveries checks the cases against the state and, only if every check passes, updates the state
-// in place and returns the new exits. On any error the state is left untouched. l2NetworkID is the exiting
-// network (a version-1 Message comes from it; a Transfer cannot bridge a token native to it).
+// in place and returns the new exits. On any error the state is left untouched. env carries the exiting network,
+// and for version-1 cases the next deposit count and the L2 snapshot balances (recoveries_guards.go).
 //
 // Rules for every case: a case already in the ledger (same case hash) is skipped; a recovery.json already in
 // the ledger under another case hash (the same recovery re-packaged with another move.sh) is an error; per
 // token the new recoveries must fit in the pendingSCLockedBalance still left. Legacy cases: a (locked
 // contract, token, destination) already recovered by a different case is an error, and the L2 token must be
 // in the LBT. Version-1 cases: a Transfer's token_info must be an LBT origin (not a token native to the L2); a
-// Message must come from the L2, go to another network and carries no value, so it consumes no balance.
-func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCase) (*recoveriesOutcome, error) {
+// Message must come from the L2 and go to another network, and the ETH it carries (if any) is charged to ETH;
+// per (contract, token) of origin_SC_funds the contract's balance at the L2 snapshot must cover what earlier
+// deltas and this batch take (checkSCBudgets); every output's deposit_count must be the one its exit gets in
+// this delta (checkRecoveryDepositCounts).
+func applyRecoveries(st *recoveriesState, env *recoveriesEnv, cases []recoveryCase) (*recoveriesOutcome, error) {
 	idx := newRecoveryIndex(st)
 	applied := map[string]bool{}
 	byRecoveryHash := map[string]string{} // recovery.json sha256 → case hash
@@ -414,6 +432,7 @@ func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCa
 
 	out := &recoveriesOutcome{}
 	var errs []error
+	var newV1 []recoveryCase
 	perToken := map[tokenKey]*big.Int{}
 	accrue := func(k tokenKey, amount *big.Int) {
 		if perToken[k] == nil {
@@ -438,7 +457,8 @@ func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCa
 		if c.Recovery != nil {
 			entries, caseErrs = legacyRecoveryEntries(c, idx, recovered, inLedger, accrue)
 		} else {
-			entries, caseErrs = v1RecoveryEntries(c, idx, l2NetworkID, accrue)
+			entries, caseErrs = v1RecoveryEntries(c, idx, env.L2NetworkID, accrue)
+			newV1 = append(newV1, c)
 		}
 		errs = append(errs, caseErrs...)
 		out.Applied = append(out.Applied, entries...)
@@ -449,7 +469,12 @@ func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCa
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
+	scRecovered, scRows, scErrs := checkSCBudgets(st, idx, env, newV1)
+	if err := errors.Join(scErrs...); err != nil {
+		return nil, err
+	}
 	out.Report = report
+	out.SCBudget = scRows
 	if len(out.Applied) == 0 {
 		return out, nil
 	}
@@ -458,12 +483,16 @@ func applyRecoveries(st *recoveriesState, l2NetworkID uint32, cases []recoveryCa
 	if err := rejectDuplicateRecoveryExits(out.Applied); err != nil {
 		return nil, err
 	}
+	if err := checkRecoveryDepositCounts(out.Applied, env.NextDepositCount); err != nil {
+		return nil, err
+	}
 	exits, err := buildRecoveryExits(out.Applied)
 	if err != nil {
 		return nil, err
 	}
 	applyToState(st, perToken)
 	st.Ledger = append(st.Ledger, out.Applied...)
+	st.SCRecovered = scRecovered
 	out.Exits = exits
 	return out, nil
 }
@@ -645,6 +674,8 @@ func v1RecoveryEntries(
 			OriginNetwork: e.TokenInfo.OriginNetwork, OriginTokenAddress: e.TokenInfo.OriginTokenAddress,
 			Amount: e.Amount.String(),
 		}
+		depositCount := e.DepositCount
+		entry.DepositCount = &depositCount
 		if len(e.Metadata) > 0 {
 			entry.Metadata = hexutil.Encode(e.Metadata)
 		}
@@ -665,8 +696,8 @@ func v1RecoveryEntries(
 			entries = append(entries, entry)
 			continue
 		}
-		// Message: token_info is the sender, which the bridge always puts on the L2 network. It carries no value
-		// (parseRecoveryFileV1), so it consumes no balance of this state.
+		// Message: token_info is the sender, which the bridge always puts on the L2 network. The ETH it carries (if
+		// any) is charged to ETH, as the agglayer does; a value-less message consumes no balance of this state.
 		if e.TokenInfo.OriginNetwork != l2NetworkID {
 			errs = append(errs, fmt.Errorf("%s: a Message's token_info.origin_network is the network that sent it "+
 				"(the L2, %d), got %d", w, l2NetworkID, e.TokenInfo.OriginNetwork))
@@ -676,6 +707,9 @@ func v1RecoveryEntries(
 			errs = append(errs, fmt.Errorf("%s: a Message to network %d, the exiting network itself, cannot be a "+
 				"certificate exit", w, l2NetworkID))
 			continue
+		}
+		if e.Amount.Sign() > 0 {
+			accrue(recoveryETH, e.Amount)
 		}
 		entries = append(entries, entry)
 	}
@@ -913,13 +947,23 @@ func loadRecoveriesState(dir string) (*recoveriesState, error) {
 	if err := loadOptionalJSON(dir, fileRecoveriesLedger, &st.Ledger); err != nil {
 		return nil, err
 	}
+	if err := loadOptionalJSON(dir, fileRecoveriesSCFunds, &st.SCRecovered); err != nil {
+		return nil, err
+	}
+	if fileExists(filepath.Join(dir, fileStep0TargetBlock)) {
+		var block uint64
+		if err := loadJSON(dir, fileStep0TargetBlock, &block); err != nil {
+			return nil, err
+		}
+		st.TargetBlock = &block
+	}
 	return st, nil
 }
 
 // runRecoveries is the `--step recoveries` entry point: it reads the state of options.previousRun and the
 // cases of options.recoveriesPath, and writes the updated state, the ledger and the delta exits file to
 // <outputDir>/recoveries. It never modifies the previous run.
-func runRecoveries(cfg *Config) error {
+func runRecoveries(ctx context.Context, cfg *Config) error {
 	if cfg.Options.RecoveriesPath == "" {
 		return fmt.Errorf("step %s requires options.recoveriesPath", stepRecoveries)
 	}
@@ -955,7 +999,11 @@ func runRecoveries(cfg *Config) error {
 	log.Infof("Recoveries: %d case(s) from %s (%d legacy format, %d version %d); state from %s (%d already applied)",
 		len(cases), cfg.Options.RecoveriesPath, legacy, len(cases)-legacy, recoveryVersionV1, stateDir, len(st.Ledger))
 
-	out, err := applyRecoveries(st, cfg.L2NetworkID, cases)
+	env, err := newRecoveriesEnv(ctx, cfg, st, cases)
+	if err != nil {
+		return err
+	}
+	out, err := applyRecoveries(st, env, cases)
 	if err != nil {
 		return fmt.Errorf("recoveries not applied (nothing written): %w", err)
 	}
@@ -977,6 +1025,15 @@ func writeRecoveriesOutput(dir string, st *recoveriesState, out *recoveriesOutco
 	if err := os.MkdirAll(dir, dirPermissions); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
+	scRecovered := st.SCRecovered
+	if scRecovered == nil {
+		scRecovered = []RecoveredSCFunds{}
+	}
+	if st.TargetBlock != nil { // carried so the next delta reads the balances at the same snapshot block
+		if err := saveJSON(dir, fileStep0TargetBlock, *st.TargetBlock); err != nil {
+			return err
+		}
+	}
 	for _, w := range []struct {
 		name string
 		data any
@@ -985,6 +1042,7 @@ func writeRecoveriesOutput(dir string, st *recoveriesState, out *recoveriesOutco
 		{fileStepCSCLockedValues, st.SC},
 		{fileStepFChecks, st.Checks},
 		{fileRecoveriesLedger, st.Ledger},
+		{fileRecoveriesSCFunds, scRecovered},
 		{fileRecoveriesDelta, &DeltaExitsFile{BridgeExits: out.Exits}},
 	} {
 		if err := saveJSON(dir, w.name, w.data); err != nil {
@@ -1014,13 +1072,21 @@ func recoveriesReport(out *recoveriesOutcome) string {
 	fmt.Fprintf(&b, "# Recoveries applied\n\nNew ledger entries: %d · exits: %d (Transfer: %d, Message: %d)\n\n",
 		len(out.Applied), len(out.Exits), transfers, messages)
 	if messages > 0 {
-		fmt.Fprintf(&b, "The %d Message exit(s) carry no value: they move no balance of this state (what they trigger "+
+		fmt.Fprintf(&b, "The %d Message exit(s) move only the ETH they carry, charged to ETH below (what they trigger "+
 			"on the destination network is not checked here).\n\n", messages)
 	}
 	b.WriteString("| origin | pending before | recovered | pending after |\n|---|---:|---:|---:|\n")
 	for _, r := range out.Report {
 		fmt.Fprintf(&b, "| %d/%s | %s | %s | %s |\n",
 			r.Token.OriginNetwork, r.Token.OriginTokenAddress.Hex(), r.PendingBefore, r.Recovered, r.Aft)
+	}
+	if len(out.SCBudget) > 0 {
+		b.WriteString("\n## Version-1 origin contracts (balance at the L2 snapshot block)\n\n" +
+			"| contract | origin | snapshot | recovered before | this run | left |\n|---|---|---:|---:|---:|---:|\n")
+		for _, r := range out.SCBudget {
+			fmt.Fprintf(&b, "| %s | %d/%s | %s | %s | %s | %s |\n", r.Contract.Hex(), r.Token.OriginNetwork,
+				r.Token.OriginTokenAddress.Hex(), r.Snapshot, r.Before, r.Recovered, r.Aft)
+		}
 	}
 	return b.String()
 }

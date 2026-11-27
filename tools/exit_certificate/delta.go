@@ -128,7 +128,8 @@ func loadPreviousRun(dir string) (*previousRun, error) {
 }
 
 // LoadDeltaExits reads and validates the delta exits file. Transfer exits need a positive amount; Message exits
-// (bridgeMessage, e.g. from version-1 recoveries) carry amount 0 and their own metadata, and come from the L2.
+// (bridgeMessage, e.g. from version-1 recoveries) carry their own metadata and may carry ETH (their amount,
+// charged to L1 ETH), and come from the L2.
 func LoadDeltaExits(path string, l2NetworkID uint32) ([]*agglayertypes.BridgeExit, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -222,12 +223,12 @@ func validateDeltaExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
 
 // validateDeltaMessageExit checks what only applies to a Message (bridgeMessage) exit. Its token_info is not a
 // token but the sender — the bridge sets it to its own network and msg.sender, so anything else is not a leaf
-// the L2 bridge could have emitted. It carries no value (the agglayer would charge a message's amount to L1
-// ETH, which this tool does not account for) and its metadata is the message itself: mandatory, never derived.
+// the L2 bridge could have emitted. It may carry ETH (bridgeMessage is payable): the agglayer charges its amount
+// to L1 ETH, and so do Step F (amountTokenKey) and the recoveries step. Its metadata is the message itself:
+// mandatory, never derived.
 func validateDeltaMessageExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
-	if be.Amount == nil || be.Amount.Sign() != 0 {
-		return fmt.Errorf("a Message exit must have amount 0, got %s (messages carrying value are not supported)",
-			be.Amount)
+	if be.Amount == nil || be.Amount.Sign() < 0 {
+		return fmt.Errorf("a Message exit needs a non-negative amount (the ETH it carries), got %v", be.Amount)
 	}
 	if len(be.Metadata) == 0 {
 		return errors.New("a Message exit needs a non-empty metadata (the message itself): it is never derived")
@@ -358,7 +359,7 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 		return runDelta(ctx, cfg)
 	}
 	if step == stepRecoveries { // standalone: it only prepares the delta exits file and the balance state
-		return runRecoveries(cfg)
+		return runRecoveries(ctx, cfg)
 	}
 	steps, err := deltaStepList(step)
 	if err != nil {
@@ -631,10 +632,21 @@ func RunStepG2Delta(
 	if err := rejectDuplicateLeaves(leaves); err != nil {
 		return nil, err
 	}
+	if err := verifyRecoveryDepositCounts(cfg, prev, firstDepositCount, leaves); err != nil {
+		return nil, err
+	}
 	warnLeavesAlreadyInTree(existing, leaves)
 	newLER, err := syncer.AppendBridges(ctx, leaves)
 	if err != nil {
 		return nil, fmt.Errorf("append delta leaves to the exit tree: %w", err)
+	}
+	// The leaves were checked at the deposit counts liteLeavesFromExits gave them: the tree must have assigned
+	// exactly those (the recoveries ledger and the claimer rely on them).
+	if next, err := syncer.NextDepositCount(ctx); err != nil {
+		return nil, err
+	} else if want := uint64(firstDepositCount) + uint64(len(leaves)); uint64(next) != want {
+		return nil, fmt.Errorf("the exit tree assigned deposit counts up to %d after appending the delta, expected %d",
+			int64(next)-1, want-1)
 	}
 
 	for i, be := range certificate.BridgeExits {

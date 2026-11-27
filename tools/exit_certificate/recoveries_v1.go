@@ -54,12 +54,30 @@ type RecoveryOutput struct {
 	DestinationAddress *string            `json:"destination_address"`
 	Amount             *string            `json:"amount"`
 	Metadata           *string            `json:"metadata"`
+	// DepositCount is the deposit count the BridgeEvent got on the kit's fork, which replays every exit
+	// certified so far before move.sh: the exit must get this same deposit count in the delta (anti-replay).
+	DepositCount *uint32 `json:"deposit_count"`
+}
+
+// RecoveryOriginSCToken is one tokens[] entry of an origin_SC_funds contract: a token (ETH is 0 / 0x0…0, also
+// when a Message carries it) and the total the contract bridged out of it.
+type RecoveryOriginSCToken struct {
+	TokenInfo *RecoveryTokenInfo `json:"token_info"`
+	Amount    *string            `json:"amount"`
+}
+
+// RecoveryOriginSCFunds is one origin_SC_funds entry: a contract that held the funds before move.sh and what
+// it paid for.
+type RecoveryOriginSCFunds struct {
+	Address *string                  `json:"address"`
+	Tokens  *[]RecoveryOriginSCToken `json:"tokens"`
 }
 
 // RecoveryFileV1 is a version-1 recovery.json.
 type RecoveryFileV1 struct {
-	Version int              `json:"version"`
-	Outputs []RecoveryOutput `json:"outputs"`
+	Version       int                      `json:"version"`
+	Outputs       []RecoveryOutput         `json:"outputs"`
+	OriginSCFunds *[]RecoveryOriginSCFunds `json:"origin_SC_funds"`
 }
 
 // recoveryExit is a validated version-1 output.
@@ -70,6 +88,25 @@ type recoveryExit struct {
 	DestinationAddress common.Address
 	Amount             *big.Int
 	Metadata           []byte
+	DepositCount       uint32
+}
+
+// recoverySCToken is a validated origin_SC_funds token: the origin token and the amount the contract paid.
+type recoverySCToken struct {
+	Token  tokenKey
+	Amount *big.Int
+}
+
+// recoverySCFunds is a validated origin_SC_funds entry.
+type recoverySCFunds struct {
+	Contract common.Address
+	Tokens   []recoverySCToken
+}
+
+// recoveryV1 is a validated version-1 recovery.json.
+type recoveryV1 struct {
+	Exits         []recoveryExit
+	OriginSCFunds []recoverySCFunds
 }
 
 // recoveryFileVersion returns the version of a recovery.json: recoveryVersionLegacy when it has no `version`
@@ -97,11 +134,13 @@ func recoveryFileVersion(data []byte) (int, error) {
 // parseRecoveryFileV1 parses and validates a version-1 recovery.json with the rules of the kit's
 // recovery-tx/validate-recovery.sh — no unknown fields, every field present, leaf_type Transfer/Message,
 // addresses 0x + 40 hex, uint32 networks, amounts as base-10 strings, metadata as 0x hex bytes, a Transfer goes
-// to network 0 — plus what a certificate exit needs: a real destination address, a Transfer of a positive
-// amount, and a Message with amount 0, a non-empty metadata and a non-zero sender. What depends on the exiting
-// network or on our state (origin/destination networks, the LBT, the pending balances) is checked later
-// (applyRecoveries).
-func parseRecoveryFileV1(data []byte) ([]recoveryExit, error) {
+// to network 0, and origin_SC_funds lists each contract once, each token once per contract, positive amounts,
+// and per token totals what the outputs bridge — plus what a certificate exit needs: a real destination
+// address, a Transfer of a positive amount, a Message with a non-empty metadata and a non-zero sender, and the
+// deposit_count of every output (required here; the kit's fork assigns it). What depends on the exiting
+// network or on our state (origin/destination networks, the LBT, the balances, the deposit counts the delta
+// assigns) is checked later (applyRecoveries).
+func parseRecoveryFileV1(data []byte) (*recoveryV1, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	var rec RecoveryFileV1
@@ -114,7 +153,7 @@ func parseRecoveryFileV1(data []byte) ([]recoveryExit, error) {
 	if len(rec.Outputs) == 0 {
 		return nil, errors.New("outputs must be a non-empty list")
 	}
-	exits := make([]recoveryExit, 0, len(rec.Outputs))
+	out := &recoveryV1{Exits: make([]recoveryExit, 0, len(rec.Outputs))}
 	var errs []error
 	for i, o := range rec.Outputs {
 		e, err := parseRecoveryOutput(fmt.Sprintf("outputs[%d]", i), o)
@@ -122,12 +161,156 @@ func parseRecoveryFileV1(data []byte) ([]recoveryExit, error) {
 			errs = append(errs, err)
 			continue
 		}
-		exits = append(exits, *e)
+		out.Exits = append(out.Exits, *e)
+	}
+	funds, err := parseOriginSCFunds(rec.OriginSCFunds)
+	if err != nil {
+		errs = append(errs, err)
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
-	return exits, nil
+	if err := checkOriginSCFundsTotals(funds, out.Exits); err != nil {
+		return nil, err
+	}
+	out.OriginSCFunds = funds
+	return out, nil
+}
+
+// recoveryETH is the token a Message's value is charged to: ETH on L1 (0 / 0x0…0), as the agglayer does
+// (amountTokenKey).
+var recoveryETH = tokenKey{}
+
+// recoveryOutputToken is the token an output's amount is charged to: a Transfer's token_info, ETH for a
+// Message (bridgeMessage carries msg.value).
+func recoveryOutputToken(e recoveryExit) tokenKey {
+	if e.LeafType == bridgetypes.LeafTypeMessage {
+		return recoveryETH
+	}
+	return e.TokenInfo
+}
+
+// parseOriginSCFunds validates the origin_SC_funds section as the kit does: required list; each entry
+// {address, tokens}, the address once; tokens a non-empty list of {token_info, amount}, each token once per
+// contract, amounts positive base-10 strings.
+func parseOriginSCFunds(raw *[]RecoveryOriginSCFunds) ([]recoverySCFunds, error) {
+	if raw == nil {
+		return nil, errors.New("missing field: origin_SC_funds")
+	}
+	var errs []error
+	funds := make([]recoverySCFunds, 0, len(*raw))
+	seen := map[common.Address]int{}
+	for i, e := range *raw {
+		w := fmt.Sprintf("origin_SC_funds[%d]", i)
+		var f recoverySCFunds
+		if e.Address == nil {
+			errs = append(errs, fmt.Errorf("%s: missing field: address", w))
+		} else if a, err := recoveryV1Address(w+".address", *e.Address); err != nil {
+			errs = append(errs, err)
+		} else {
+			if prev, dup := seen[a]; dup {
+				errs = append(errs, fmt.Errorf("origin_SC_funds: %s is listed more than once (entries %d and %d)",
+					a.Hex(), prev, i))
+			}
+			seen[a] = i
+			f.Contract = a
+		}
+		if e.Tokens == nil || len(*e.Tokens) == 0 {
+			errs = append(errs, fmt.Errorf("%s.tokens: must be a non-empty list", w))
+			continue
+		}
+		tokens := map[tokenKey]bool{}
+		for j, t := range *e.Tokens {
+			u := fmt.Sprintf("%s.tokens[%d]", w, j)
+			tok, err := parseOriginSCToken(u, t)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if tokens[tok.Token] {
+				errs = append(errs, fmt.Errorf("%s.tokens: token %d/%s is listed more than once", w,
+					tok.Token.OriginNetwork, tok.Token.OriginTokenAddress.Hex()))
+				continue
+			}
+			tokens[tok.Token] = true
+			f.Tokens = append(f.Tokens, tok)
+		}
+		funds = append(funds, f)
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	return funds, nil
+}
+
+func parseOriginSCToken(u string, t RecoveryOriginSCToken) (recoverySCToken, error) {
+	var tok recoverySCToken
+	var errs []error
+	if t.TokenInfo == nil || t.TokenInfo.OriginNetwork == nil || t.TokenInfo.OriginTokenAddress == nil {
+		errs = append(errs, fmt.Errorf("%s.token_info: must be {origin_network: <uint32>, origin_token_address: "+
+			"<address>}", u))
+	} else if a, err := recoveryV1Address(u+".token_info.origin_token_address",
+		*t.TokenInfo.OriginTokenAddress); err != nil {
+		errs = append(errs, err)
+	} else {
+		tok.Token = tokenKey{*t.TokenInfo.OriginNetwork, a}
+	}
+	if t.Amount == nil || !recoveryAmountRe.MatchString(*t.Amount) {
+		got := "missing"
+		if t.Amount != nil {
+			got = fmt.Sprintf("%q", *t.Amount)
+		}
+		errs = append(errs, fmt.Errorf("%s.amount: must be a positive integer in base units, written as a string, "+
+			"got %s", u, got))
+	} else {
+		tok.Amount, _ = new(big.Int).SetString(*t.Amount, decimalBase)
+	}
+	return tok, errors.Join(errs...)
+}
+
+// checkOriginSCFundsTotals requires, per token, that the origin_SC_funds amounts over every contract add up to
+// what the outputs bridge (recoveryOutputToken; outputs of amount 0 pay for nothing).
+func checkOriginSCFundsTotals(funds []recoverySCFunds, exits []recoveryExit) error {
+	want := map[tokenKey]*big.Int{}
+	got := map[tokenKey]*big.Int{}
+	add := func(m map[tokenKey]*big.Int, k tokenKey, v *big.Int) {
+		if m[k] == nil {
+			m[k] = new(big.Int)
+		}
+		m[k].Add(m[k], v)
+	}
+	for _, e := range exits {
+		if e.Amount.Sign() > 0 {
+			add(want, recoveryOutputToken(e), e.Amount)
+		}
+	}
+	for _, f := range funds {
+		for _, t := range f.Tokens {
+			add(got, t.Token, t.Amount)
+		}
+	}
+	keys := map[tokenKey]*big.Int{}
+	for k := range want {
+		keys[k] = nil
+	}
+	for k := range got {
+		keys[k] = nil
+	}
+	var errs []error
+	for _, k := range sortedTokenKeys(keys) {
+		w, g := want[k], got[k]
+		if w == nil {
+			w = new(big.Int)
+		}
+		if g == nil {
+			g = new(big.Int)
+		}
+		if w.Cmp(g) != 0 {
+			errs = append(errs, fmt.Errorf("origin_SC_funds: token %d/%s totals %s over the contracts, but the "+
+				"outputs bridge %s", k.OriginNetwork, k.OriginTokenAddress.Hex(), g, w))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func parseRecoveryOutput(w string, o RecoveryOutput) (*recoveryExit, error) {
@@ -198,6 +381,12 @@ func parseRecoveryOutput(w string, o RecoveryOutput) (*recoveryExit, error) {
 		e.Metadata, _ = hex.DecodeString(strings.TrimPrefix(*o.Metadata, "0x"))
 	}
 
+	if o.DepositCount == nil {
+		missing("deposit_count")
+	} else {
+		e.DepositCount = *o.DepositCount
+	}
+
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
@@ -212,11 +401,7 @@ func parseRecoveryOutput(w string, o RecoveryOutput) (*recoveryExit, error) {
 		return e, errors.Join(errs...)
 	}
 	// Message: the same rules as the delta mode (validateDeltaMessageExit), checked here so a case is refused
-	// before anything is written.
-	if e.Amount.Sign() != 0 {
-		errs = append(errs, fmt.Errorf("%s.amount: a Message must have amount 0, got %s (messages carrying value "+
-			"are not supported)", w, e.Amount))
-	}
+	// before anything is written. It may carry ETH (bridgeMessage is payable): its amount is charged to ETH.
 	if len(e.Metadata) == 0 {
 		errs = append(errs, fmt.Errorf("%s.metadata: a Message needs a non-empty metadata (the message itself)", w))
 	}

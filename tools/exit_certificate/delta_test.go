@@ -162,7 +162,7 @@ func TestLoadDeltaExits(t *testing.T) {
 		msg := `{"bridge_exits":[{"leaf_type":"Message","token_info":` + tokenInfo +
 			`,"dest_network":0,"dest_address":"0x00000000000000000000000000000000000000d1","amount":"1"}]}`
 		_, err = LoadDeltaExits(write(t, msg), deltaTestNetworkID)
-		require.ErrorContains(t, err, "a Message exit must have amount 0")
+		require.ErrorContains(t, err, "a Message exit needs a non-empty metadata")
 
 		_, err = LoadDeltaExits(write(t, `{"bridge_exits":[{"leaf_type":2,"token_info":`+tokenInfo+
 			`,"dest_network":0,"dest_address":"0x00000000000000000000000000000000000000d1","amount":"1"}]}`),
@@ -186,10 +186,15 @@ func TestLoadDeltaExits(t *testing.T) {
 		require.Equal(t, 0, exits[0].Amount.Sign())
 		require.Equal(t, []byte{0xbe, 0xef}, exits[0].Metadata)
 
+		// a Message may carry ETH (bridgeMessage is payable).
+		exits, err = LoadDeltaExits(write(t, message(sender, "0", `"amount":"3","metadata":"beef"`)), deltaTestNetworkID)
+		require.NoError(t, err)
+		require.Equal(t, "3", exits[0].Amount.String())
+
 		zeroSender := `{"origin_network":7,"origin_token_address":"0x0000000000000000000000000000000000000000"}`
 		otherNetwork := `{"origin_network":0,"origin_token_address":"0x00000000000000000000000000000000000000c1"}`
 		for name, tc := range map[string]struct{ doc, want string }{
-			"with value":        {message(sender, "0", `"amount":"3","metadata":"beef"`), "must have amount 0"},
+			"negative value":    {message(sender, "0", `"amount":"-3","metadata":"beef"`), "amount"},
 			"without metadata":  {message(sender, "0", `"amount":"0"`), "needs a non-empty metadata"},
 			"null metadata":     {message(sender, "0", `"amount":"0","metadata":null`), "needs a non-empty metadata"},
 			"empty metadata":    {message(sender, "0", `"amount":"0","metadata":""`), "needs a non-empty metadata"},
