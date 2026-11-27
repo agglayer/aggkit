@@ -598,7 +598,7 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
 }
 ```
 
-- `Transfer` and `Message` exits are supported, with a `token_info` and a `dest_network` other than the exiting network. A `Transfer` (`bridgeAsset`) needs a positive `amount`. A `Message` (`bridgeMessage`; `--step recoveries` produces them from version-1 recoveries) has stricter rules: `amount` must be `"0"` (messages carrying value are not supported), `metadata` is mandatory and non-empty (it is the message), and `token_info` is not a token but the **sender**: `origin_network` must be the exiting network and `origin_token_address` a non-zero address. Example:
+- `Transfer` and `Message` exits are supported, with a `token_info` and a `dest_network` other than the exiting network. A `Transfer` (`bridgeAsset`) needs a positive `amount`. A `Message` (`bridgeMessage`; `--step recoveries` produces them from version-1 recoveries) has its own rules: `amount` may be `"0"` or the ETH it carries (charged to L1 ETH, as the agglayer does), `metadata` is mandatory and non-empty (it is the message), and `token_info` is not a token but the **sender**: `origin_network` must be the exiting network and `origin_token_address` a non-zero address. Example:
 
   ```json
   {
@@ -611,10 +611,10 @@ The new exits, with the same `BridgeExit` shape as a certificate's `bridge_exits
   }
   ```
 
-  A `Message` moves no token balance, so Step F leaves it out of the per-token check (a delta of `Message` exits only has nothing to compare). It is claimed on the destination network with `claimMessage`, not `claimAsset`.
+  A value-less `Message` moves no balance, so Step F leaves it out of the per-token check (a delta of such `Message` exits only has nothing to compare); one carrying ETH is checked with the ETH exits. It is claimed on the destination network with `claimMessage`, not `claimAsset`.
 - Two delta exits identical to each other — same token (or sender), destination, amount and metadata — are rejected: they would be two leaves with the same hash with no reason to exist. Merge repeated exits into one (sum the amounts). An exit identical to a **leaf already in the exit tree** (an exit of a previous run or an older L2 bridge, read from the copied lite DB) is accepted, with a warning in the log: it is appended as a new leaf with its own deposit count and global index, so both can be claimed separately. This needs a claimer that matches certificate exits to leaves by position; one that indexes leaves by hash would serve only one of the two.
 - `metadata`, when present, is the **raw** leaf metadata as plain hex (the tool hashes it): no `0x` prefix and even length — a malformed value is rejected instead of being silently dropped (which would regenerate it from the L2 and change the leaf). A certificate's `metadata` is the keccak hash: do not copy it here (a 32-byte value logs a warning). When absent the tool derives it from the L2 bridge the way `bridgeAsset` does: the ABI-encoded name/symbol/decimals of the L2 token for ERC-20 exits, the gas-token metadata for native exits. A `Message`'s metadata is the message itself: it is used as given, never derived, and an exit without it is rejected.
-- **The L2 RPC (`l2RpcUrl`) must still answer in delta mode**: it is used for the L2 bridge's gas token and for that metadata derivation (the exits produced by `--step recoveries` from legacy-format cases carry none; version-1 cases carry the metadata of their `BridgeEvent`s). Balances are never read from it.
+- **The L2 RPC (`l2RpcUrl`) must still answer in delta mode**: it is used for the L2 bridge's gas token and for that metadata derivation (the exits produced by `--step recoveries` from legacy-format cases carry none; version-1 cases carry the metadata of their `BridgeEvent`s). The delta run never reads balances from it (`--step recoveries` reads the version-1 contracts' balances at the frozen snapshot block).
 
 ### Pipeline
 
@@ -797,7 +797,8 @@ Two `recovery.json` formats are accepted, and can be mixed in the same run:
 - **Legacy** (no `version` field): `locked_contract`, `destination`, `funds[]` with `token` = `native` or the L2
   token address, and `amount` in base units. The L2 token is resolved to its origin through `step-0-lbt.json`.
 - **Version 1** (`"version": 1`): the bridge exits themselves — one `outputs[]` entry per `BridgeEvent` that the
-  case's `move.sh` emitted on the kit's shadow-fork (built by the kit's `build-recovery.sh`):
+  case's `move.sh` emitted on the kit's shadow-fork (built by the kit's `build-recovery.sh`) — and the contracts
+  that paid for them (`origin_SC_funds`):
 
   ```json
   {
@@ -809,7 +810,19 @@ Two `recovery.json` formats are accepted, and can be mixed in the same run:
         "destination_network": 0,
         "destination_address": "0x4512b32d20424960b4c7f11cecb02063e31d85ad",
         "amount": "14204531250000",
-        "metadata": "0x"
+        "metadata": "0x",
+        "deposit_count": 81234
+      }
+    ],
+    "origin_SC_funds": [
+      {
+        "address": "0x5c8bdb3e8a8bba8ba3a4a6da6b26c6c3bd1c0e2d",
+        "tokens": [
+          {
+            "token_info": { "origin_network": 0, "origin_token_address": "0x0000000000000000000000000000000000000000" },
+            "amount": "14204531250000"
+          }
+        ]
       }
     ]
   }
@@ -820,8 +833,33 @@ Two `recovery.json` formats are accepted, and can be mixed in the same run:
   string, `metadata` as `0x` hex, every field required and no other field. `leaf_type` is `Transfer` (bridgeAsset:
   `token_info` is the token, ETH is `0`/`0x0…0`; it must go to network 0, with a positive amount, and bridge ETH or
   a token in the LBT — not one native to the L2) or `Message` (bridgeMessage: `token_info` is the sender — the L2
-  network and a non-zero address —, `amount` must be `"0"`, `metadata` is the message and cannot be empty, and the
-  destination network cannot be the L2). A `Message` carrying ETH is refused.
+  network and a non-zero address —, `metadata` is the message and cannot be empty, and the destination network
+  cannot be the L2). A `Message` may carry ETH (`bridgeMessage` is payable): its `amount` is charged to ETH, as the
+  agglayer does. `origin_SC_funds` lists each contract once (`address`), each token once per contract, with the
+  total it bridged out as a positive base-10 string; per token, the amounts over all contracts must add up to what
+  the outputs bridge (a Transfer its `token_info`, a Message ETH; outputs of amount `"0"` pay for nothing).
+
+  **`deposit_count`** (uint32, required) is the deposit count the `BridgeEvent` got on the kit's fork. The kit
+  verifies a case on a fork that first replays every exit certified so far, so the fork's exit tree is the one
+  after the last certificate and the deposit counts of `move.sh` are the ones the exits get in the next delta.
+  *Pending in the kit*: its current `build-recovery.sh` (PR #6) does not write `deposit_count` yet; this tool
+  already requires it.
+
+**Anti-drain checks of version-1 cases** (they need `l2RpcUrl` and the previous run's exit tree):
+
+- **per-contract budget**: for every (contract, token) of `origin_SC_funds`, the contract's balance at the frozen L2
+  snapshot block — the first run's target block (`step-0-l2_target_block.json`, carried in the recoveries state; the
+  L2 is halted) — read with `eth_getBalance` for ETH or `balanceOf(contract)` on the L2 token (resolved through the
+  LBT) must cover what earlier deltas already recovered from it plus what this batch takes (several cases of one
+  batch add up). The cumulative amounts are kept in `recoveries-sc-funds.json`, delta to delta.
+- **deposit counts (anti-replay)**: each output's `deposit_count` must be the deposit count its exit gets in this
+  delta: the previous run's exit tree size (its lite DB) + the exit's position in `delta-exits.json` (the merged
+  legacy exits first, then the version-1 outputs in case and output order). A stale case — built on an older tree,
+  or an old claim replayed — carries deposit counts already taken and is refused, naming the case, the output and
+  both values. Several version-1 cases in one batch therefore must have been simulated by the kit in that same
+  order (each on top of the previous). The recorded deposit count goes to the ledger (`depositCount`), and the
+  delta run's Step G2 checks again that the leaf it appends at that deposit count is that exit (a
+  `delta-exits.json` edited or reordered after `--step recoveries` is refused).
 
 The exits of legacy cases come first: one Transfer exit to L1 per (destination, origin token), summing the cases
 that coincide, sorted (as before version 1 existed). The outputs of version-1 cases follow **one exit per output,
@@ -836,8 +874,8 @@ error nothing is written):
 
 - same validation as the kit's `validate-recovery.sh` of each format (no unknown fields, every field present; legacy:
   no placeholder addresses, positive amounts, no repeated token; version 1: labelled `leaf_type`, `0x` hex metadata,
-  amounts as strings, plus no placeholder `destination_address`, a positive amount for a Transfer and the Message
-  rules above); an unsupported `version` is an error;
+  amounts as strings, `origin_SC_funds` totals, plus no placeholder `destination_address`, a positive amount for a
+  Transfer, the Message rules above and a `deposit_count` per output); an unsupported `version` is an error;
 - **idempotence**: a case whose case hash (the kit's: sha256 of `recovery.json` and `move.sh`) is already in the
   ledger is skipped, not an error; a `(locked_contract, token, destination)` already recovered by a *different* case is an error
   — one recovery per contract+token+destination, ever (the ledger cannot tell a re-packaged copy of an applied case
@@ -849,9 +887,10 @@ error nothing is written):
   error, and so is a directory holding the same `recovery.json` twice (e.g. a kit `.tgz` and its extracted files; a
   loose `recovery.json` without `move.sh` hashes only itself, so it would not look like the `.tgz`'s case);
 - per token, the sum of the new recoveries ≤ `pendingSCLockedBalance` still left (Step C), and ≤ the
-  `skippedSCLockedAmount` of Step F. A Message carries no value and moves no balance of this state: what it
-  triggers on the destination network (e.g. a contract paying out in `onMessageReceived`) is **not** checked here,
-  and no balance bounds how many Messages a case carries — that is part of the manual review of the case.
+  `skippedSCLockedAmount` of Step F (the ETH a Message carries counts as ETH). What a Message triggers on the
+  destination network (e.g. a contract paying out in `onMessageReceived`) is **not** checked here — that is part of
+  the manual review of the case;
+- the version-1 per-contract budget and deposit counts above.
 
 Input state: `<previousRun>/recoveries/` if a previous recoveries run left it there, else the files of
 `previousRun` when it is a first (non-delta) run. A previous delta run **without** `recoveries/` state is refused
@@ -862,9 +901,11 @@ Input state: `<previousRun>/recoveries/` if a previous recoveries run left it th
 | `step-c-sc-locked-values.json` | `pendingSCLockedBalance` −= recovered; `recoveredSCLockedBalance` += recovered. |
 | `step-f-checks.json` | recovered amount moves from `skippedSCLockedAmount` to `certificateAmount` / `lbtAmount` (Step F reports `lbtAmount` net of the skipped SC-locked value). |
 | `step-0-lbt.json` | unchanged copy, so the directory is a complete state for the next run. |
-| `recoveries-applied.json` | ledger of every applied (case, token) — legacy — or (case, output) — version 1, which adds `recoveryHash`, `version`, `leafType`, `destinationNetwork` and `metadata` and has no `lockedContract`. |
+| `step-0-l2_target_block.json` | copy of the L2 snapshot block (when the input state has it), for the next run's per-contract budget. |
+| `recoveries-sc-funds.json` | per (contract, token) of the version-1 `origin_SC_funds`: balance at the snapshot block and cumulative amount recovered. |
+| `recoveries-applied.json` | ledger of every applied (case, token) — legacy — or (case, output) — version 1, which adds `recoveryHash`, `version`, `leafType`, `destinationNetwork`, `metadata` and `depositCount` and has no `lockedContract`. |
 | `delta-exits.json` | **only the exits of this run**: set it as `options.deltaExitsFile`. |
-| `recoveries-report.md` | Transfer / Message exit counts and, per token: pending before / recovered / pending after. |
+| `recoveries-report.md` | Transfer / Message exit counts, per token: pending before / recovered / pending after, and per version-1 contract: snapshot / recovered before / this run / left. |
 
 The state lives in a `recoveries/` subdirectory because the delta pipeline itself writes `step-f-checks.json` in
 `outputDir`. Run the step on every delta (with `previousRun` = the last settled run) so the chain keeps its state.
