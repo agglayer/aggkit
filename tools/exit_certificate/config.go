@@ -11,6 +11,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -129,8 +130,28 @@ type Options struct {
 	// Defaults to false (full pipeline).
 	DeltaMode bool `json:"deltaMode"`
 	// PreviousRun is the output directory of the previous (settled) run the delta certificate is chained
-	// on. Required with DeltaMode. Relative paths resolve from the config file directory.
+	// on. Required with DeltaMode. Relative paths resolve from the config file directory. It can also be
+	// the archive of that run (gs://<bucket>/<prefix>, uploaded by --step upload): the files a delta needs
+	// are then downloaded into ArchiveCacheDir and verified against the archive manifest.
 	PreviousRun string `json:"previousRun"`
+	// PreviousRunArchive / PreviousRunArchiveManifestSHA256 are set at run time when PreviousRun was an
+	// archive URI: the URI and the SHA-256 of its manifest (recorded in the delta manifest).
+	PreviousRunArchive               string `json:"-"`
+	PreviousRunArchiveManifestSHA256 string `json:"-"`
+	// ArchiveURI is the archive base --step upload uses, gs://<bucket>/<prefix> (e.g.
+	// gs://polygonlabs-zkevm-prod-let-archive/runs): the run goes to <ArchiveURI>/<networkID>/<height>,
+	// zero-padded, from the certificate it settled. Optional; only the upload step needs it.
+	ArchiveURI string `json:"archiveURI"`
+	// ArchiveCacheDir is the base directory archived runs are downloaded into (one subdirectory per
+	// bucket/prefix). Defaults to "archive-cache" next to OutputDir. Relative paths resolve from the
+	// config file directory.
+	ArchiveCacheDir string `json:"archiveCacheDir"`
+	// ArchiveMetaFiles are extra files that document the run (the config, notes, the inputs it was built
+	// from...) that --step upload archives with the run: it copies them, as they are, into
+	// <OutputDir>/metafiles/<basename> right before uploading, and they are stored zstd-compressed like every
+	// other file of the run. Basenames must be unique. Relative paths resolve from the config file directory.
+	// Never list files holding secrets.
+	ArchiveMetaFiles []string `json:"archiveMetaFiles"`
 	// DeltaExitsFile is the JSON file with the new bridge exits (see DeltaExitsFile). Required with
 	// DeltaMode. Relative paths resolve from the config file directory.
 	DeltaExitsFile string `json:"deltaExitsFile"`
@@ -276,6 +297,16 @@ func validateRawConfig(raw *rawConfig) error {
 		return fmt.Errorf("invalid exitAddress: the zero address (0x00...00) is not allowed; " +
 			"set an address whose private key you control so the SC-locked funds can be recovered")
 	}
+	if raw.Options != nil && raw.Options.ArchiveURI != "" {
+		if _, err := runarchive.ParseURI(raw.Options.ArchiveURI); err != nil {
+			return fmt.Errorf("invalid options.archiveURI: %w", err)
+		}
+	}
+	if raw.Options != nil {
+		if err := validateArchiveMetaFiles(raw.Options.ArchiveMetaFiles); err != nil {
+			return err
+		}
+	}
 	// capMode, when set, must be one of the known modes.
 	if raw.Options != nil && raw.Options.CapMode != "" &&
 		raw.Options.CapMode != CapModeNone &&
@@ -326,6 +357,11 @@ func validateDeltaOptions(raw *rawOpts, deltaMode bool) error {
 	}
 	if raw.PreviousRun == "" {
 		return fmt.Errorf("missing required parameter: options.previousRun (required by options.deltaMode)")
+	}
+	if runarchive.IsURI(raw.PreviousRun) {
+		if _, err := runarchive.ParseURI(raw.PreviousRun); err != nil {
+			return fmt.Errorf("invalid options.previousRun: %w", err)
+		}
 	}
 	if raw.DeltaExitsFile == "" {
 		return fmt.Errorf("missing required parameter: options.deltaExitsFile (required by options.deltaMode)")
@@ -540,7 +576,22 @@ func mergeScalarOptions(opts *Options, raw *rawOpts, configDir string) {
 		opts.GenesisPrefundETHWei = raw.GenesisPrefundETHWei
 	}
 	if raw.PreviousRun != "" {
-		opts.PreviousRun = resolvePath(configDir, raw.PreviousRun)
+		opts.PreviousRun = raw.PreviousRun
+		if !runarchive.IsURI(raw.PreviousRun) {
+			opts.PreviousRun = resolvePath(configDir, raw.PreviousRun)
+		}
+	}
+	if raw.ArchiveURI != "" {
+		opts.ArchiveURI = raw.ArchiveURI
+	}
+	if raw.ArchiveCacheDir != "" {
+		opts.ArchiveCacheDir = resolvePath(configDir, raw.ArchiveCacheDir)
+	}
+	if len(raw.ArchiveMetaFiles) > 0 {
+		opts.ArchiveMetaFiles = make([]string, 0, len(raw.ArchiveMetaFiles))
+		for _, f := range raw.ArchiveMetaFiles {
+			opts.ArchiveMetaFiles = append(opts.ArchiveMetaFiles, resolvePath(configDir, f))
+		}
 	}
 	if raw.DeltaExitsFile != "" {
 		opts.DeltaExitsFile = resolvePath(configDir, raw.DeltaExitsFile)
@@ -657,6 +708,9 @@ type rawOpts struct {
 	PreviousRun                           string                 `json:"previousRun"`
 	DeltaExitsFile                        string                 `json:"deltaExitsFile"`
 	RecoveriesPath                        string                 `json:"recoveriesPath"`
+	ArchiveURI                            string                 `json:"archiveURI"`
+	ArchiveCacheDir                       string                 `json:"archiveCacheDir"`
+	ArchiveMetaFiles                      []string               `json:"archiveMetaFiles"`
 }
 
 // --- LBT file parsing ---

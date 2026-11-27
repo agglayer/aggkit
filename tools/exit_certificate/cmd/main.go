@@ -66,12 +66,24 @@ Pipeline steps (run in order by default):
          through /bridges and /claim-params. Reads the local exit tree DB and
          step-g-new-local-exit-root.json (run step g first). Requires l1RpcUrl.
 
+  UPLOAD Post-submission step (--step upload, not part of "all"; last of the order, so
+         --step submit- runs submit, wait and upload in one go). Archives
+         the output dir of a settled run under options.archiveURI (gs://<bucket>/<prefix>,
+         a write-once GCS bucket) at <networkID>/<certificate height>, every file
+         compressed with zstd, plus a manifest of checksums; never overwriting,
+         re-running resumes a partial upload. A delta's options.previousRun
+         can then be that URI: the run is downloaded and verified before use.
+         options.archiveMetaFiles are copied into <outputDir>/metafiles/ right
+         before uploading, so they are archived (compressed) with the run.
+
   RECOVERIES
          Delta mode only (options.deltaMode), standalone (--step recoveries). Turns verified
          zkevm-proof-of-ownership-kit recoveries (options.recoveriesPath) into
          <outputDir>/recoveries/delta-exits.json and updates the balance state there.
 
-Use --step to run a single step (e.g. --step a). When running steps individually
+Use --step to run a single step (e.g. --step a), a list (h,i,sign) or a range (a-c). An open
+range starting at or before sign stops at sign (f- never submits); one starting at submit, wait
+or upload runs to the end (submit- = submit, wait, upload). When running steps individually
 the output files from previous steps must already exist in the output directory.`
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
@@ -81,8 +93,10 @@ the output files from previous steps must already exist in the output directory.
 			Value:   "parameters.json",
 		},
 		&cli.StringFlag{
-			Name:  "step",
-			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, pending_claims, or all",
+			Name: "step",
+			Usage: "Run a specific step: 0, a, b, c, d, e, f, g, sign, submit, wait, pending_claims, upload, " +
+				"recoveries (delta mode), or all; also lists (h,i,sign) and ranges (a-c, f- stops at sign, " +
+				"submit- = submit,wait,upload)",
 			Value: "all",
 		},
 		&cli.BoolFlag{

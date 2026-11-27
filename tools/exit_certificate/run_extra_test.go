@@ -17,6 +17,11 @@ func TestExpandStepRange(t *testing.T) {
 	require.Equal(t, "0", open[0])
 	require.Equal(t, lastAutoStep, open[len(open)-1])
 
+	// an open range starting at a post-submission step runs to the end (upload)
+	post, err := expandStepRange("submit-")
+	require.NoError(t, err)
+	require.Equal(t, []string{stepSubmit, stepWait, stepUpload}, post)
+
 	// closed range
 	closed, err := expandStepRange("a-c")
 	require.NoError(t, err)

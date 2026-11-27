@@ -23,6 +23,10 @@
 #   5. verifies the chaining: height, prev/new local exit root, the delta certificate carries only the
 #      new exit, and exit-certificate-full.json carries every exit (previous + new).
 #
+# With ARCHIVE_URI_BASE set (e.g. gs://let-archive/runs), the previous run is read from its archive
+# (51-archive_run.sh uploaded it to <base>/<networkID>/<height>) instead of its local output dir: the tool
+# downloads and verifies it (options.previousRun = gs://...).
+#
 # Needs the kit (it is not part of this repo): KIT_DIR (default: ../zkevm-proof-of-ownership-kit next to this
 # repo) with docker, cast and jq. The fork the kit starts reads the L2 over RPC, which is frozen (30-stop_sequencer.sh)
 # so its head is stable, as the kit requires. KIT_ANVIL_PORT (default 18546) is the port of that fork.
@@ -188,7 +192,12 @@ else
     tar -xzf "$KIT_PACKAGE" -C "$CASES_DIR"          # delivered as an unpacked directory
 fi
 
-jq --arg prev "$PREV_OUTPUT_REL" --arg exits "$DELTA_EXITS_REL" --arg out "$DELTA_OUTPUT_REL" --arg cases "$CASES_REL" '
+PREVIOUS_RUN="$PREV_OUTPUT_REL"
+if [[ -n "${ARCHIVE_URI_BASE:-}" ]]; then
+    PREVIOUS_RUN="${ARCHIVE_URI_BASE%/}/$(jq -r '.network_id' "$PREV_CERT")/$(printf '%010d' "$(jq -r '.height' "$PREV_CERT")")"
+    log_info "📥 previousRun from the archive: $PREVIOUS_RUN"
+fi
+jq --arg prev "$PREVIOUS_RUN" --arg exits "$DELTA_EXITS_REL" --arg out "$DELTA_OUTPUT_REL" --arg cases "$CASES_REL" '
     .options.deltaMode = true
     | .options.previousRun = $prev
     | .options.deltaExitsFile = $exits
@@ -380,6 +389,11 @@ check "delta-manifest.json links the roots before/after" \
     jq -e --arg b "$PREV_LER" --arg a "$DELTA_LER" '.rootBefore == $b and .rootAfter == $a' "$MANIFEST" >/dev/null
 check "delta-manifest.json: the added leaves come after the previous ones" \
     jq -e --argjson n "$PREV_EXITS" '.firstDepositCount >= $n' "$MANIFEST" >/dev/null
+if [[ -n "${ARCHIVE_URI_BASE:-}" ]]; then
+    check "delta-manifest.json records the archive of the previous run ($PREVIOUS_RUN)" \
+        jq -e --arg u "$PREVIOUS_RUN" '.previousRunArchive == $u and (.previousRunArchiveManifestSha256 | length == 64)' \
+            "$MANIFEST" >/dev/null
+fi
 
 if [[ "$FAILURES" -ne 0 ]]; then
     log_error "$FAILURES check(s) failed for delta ${INDEX} (output: $DELTA_OUTPUT)"

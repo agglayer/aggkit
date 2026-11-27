@@ -61,11 +61,13 @@ Relative paths resolve against the directory containing the config file.
 | ----- | -------- | ----------- |
 | `address` | no (default `0.0.0.0`) | HTTP bind host/IP (without port) |
 | `port` | no (default `8080`) | HTTP bind port |
-| `signedCertificatePath` | yes | path to `exit-certificate-signed.json` |
-| `localExitTreeDBPath` | yes | path to `step-g-l2bridgesyncerlite.sqlite` |
+| `signedCertificatePath` | yes (unless `runSource`) | path to `exit-certificate-signed.json` |
+| `localExitTreeDBPath` | yes (unless `runSource`) | path to `step-g-l2bridgesyncerlite.sqlite` |
 | `l1InfoTreeDBPath` | yes | path to the l1infotreesync SQLite DB |
-| `stepWaitResultPath` | yes | path to `step-wait-result.json` (the WAIT step's L1 settlement record) |
+| `stepWaitResultPath` | yes (unless `runSource`) | path to `step-wait-result.json` (the WAIT step's L1 settlement record) |
 | `pendingBridgesPath` | no | path to `step-pending-l2-bridges.json` (PENDING_CLAIMS step output); when set, those bridges are also served by `/bridges` and `/claim-params` |
+| `runSource` | no | archive of the run to serve, `gs://<bucket>/<prefix>` (see [Serving an archived run](#serving-an-archived-run)); the four run data paths above must then be left empty |
+| `runDataDir` | no (default `archive-cache` next to the config) | base directory `runSource` is downloaded into |
 | `networkId` | no | source network; defaults to the certificate's `network_id` |
 | `l1Sync.enabled` | no | when `false` the L1 Info Tree DB is opened read-only; when `true` it is kept in sync from L1 |
 | `l1Sync.rpcUrl`, `l1Sync.globalExitRootAddr`, `l1Sync.rollupManagerAddr`, … | when `l1Sync.enabled` | L1 sync parameters |
@@ -111,6 +113,37 @@ storage and reorg processor (`l1infotree_multidownloader.sqlite`) next to the L1
 > Because `rollupManagerAddr` is not part of the exit_certificate config, deriving always makes an
 > L1 RPC call to resolve it; `l1RpcUrl` and `sovereignRollupAddr` must be set and reachable.
 
+## Serving an archived run
+
+The exit_certificate tool archives each settled run in a write-once GCS bucket
+([`--step upload`](../exit_certificate/README.md#archiving-runs-in-a-gcs-bucket)). Instead of a local copy of
+the output directory, the claimer can load the run data from there:
+
+- **Native config:** set `runSource = "gs://<bucket>/<prefix>"` (and optionally `runDataDir`), and leave
+  `signedCertificatePath`, `localExitTreeDBPath`, `stepWaitResultPath` and `pendingBridgesPath` empty.
+- **Derived config:** `--exit-certificate-config parameters.toml --run-source gs://<bucket>/<prefix>` (or the
+  `CLAIMER_RUN_SOURCE` environment variable). The run data goes to the exit_certificate's
+  `options.archiveCacheDir` (by default `archive-cache` next to `options.outputDir`); the L1 Info Tree DB
+  stays in `options.outputDir`.
+
+On startup, before anything else, the claimer downloads into `<runDataDir>/<bucket>/<prefix>/` only what it
+serves — the certificate (`exit-certificate-full.json` for a delta run, else `exit-certificate-signed.json`),
+`step-g-l2bridgesyncerlite.sqlite`, `step-wait-result.json` and, when archived,
+`step-pending-l2-bridges.json` — decompresses them (they are stored as `.zst`) and checks each object's size
+and CRC32C and each file's size and SHA-256 against the run's
+`archive-manifest.json`. A prefix without a manifest (incomplete upload) is refused. On a restart the files
+already there are re-verified and only missing or different ones are downloaded again.
+
+Read access to the bucket (`roles/storage.objectViewer`) is enough. Credentials are the Application Default
+Credentials: `gcloud auth application-default login` locally, the workload identity / service account of the
+pod in a cluster (that identity must be granted `objectViewer` on the bucket), or
+`GOOGLE_APPLICATION_CREDENTIALS`.
+
+```bash
+./exit-certificate-claimer --exit-certificate-config parameters.toml \
+  --run-source gs://polygonlabs-zkevm-prod-let-archive/runs/1/0000000005   # network 1, certificate height 5
+```
+
 ## HTTP API
 
 The HTTP API (endpoints, query parameters, response schemas, and error model) is fully specified in
@@ -129,6 +162,10 @@ CGO_ENABLED=1 go build -o exit-certificate-claimer ./tools/exit_certificate_clai
 
 # derive the config from an exit_certificate config instead:
 ./exit-certificate-claimer --exit-certificate-config tools/exit_certificate/parameters.toml
+
+# ...serving the run archived in a GCS bucket instead of the files of its output dir:
+./exit-certificate-claimer --exit-certificate-config tools/exit_certificate/parameters.toml \
+  --run-source gs://<bucket>/runs/<networkID>/<height, 10 digits>
 
 # override the bind host/port from the command line (works in both modes):
 ./exit-certificate-claimer --config config.toml --address 127.0.0.1 --port 9090

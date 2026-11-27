@@ -28,7 +28,10 @@ Data sources:
   - exit-certificate-signed.json       (the certificate bridge exits)
   - step-g-l2bridgesyncerlite.sqlite   (the L2 local exit tree, for local merkle proofs)
   - an l1infotreesync SQLite database   (mainnet/rollup exit roots + rollup proof), opened
-                                         read-only or kept in sync from L1 when l1Sync.enabled.`
+                                         read-only or kept in sync from L1 when l1Sync.enabled.
+
+The run data (certificate, local exit tree, WAIT result) can also be downloaded from the run's
+archive in a GCS bucket: runSource in the config, or --run-source with --exit-certificate-config.`
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
@@ -41,6 +44,12 @@ Data sources:
 			Aliases: []string{"e"},
 			Usage: "Path to an exit_certificate config file to derive the claimer config from " +
 				"(mutually exclusive with --config)",
+		},
+		&cli.StringFlag{
+			Name: "run-source",
+			Usage: "With --exit-certificate-config: serve the run archived at this gs://<bucket>/<prefix> " +
+				"(downloaded into the exit_certificate archive cache) instead of the files of its output dir",
+			EnvVars: []string{"CLAIMER_RUN_SOURCE"},
 		},
 		&cli.StringFlag{
 			Name:  "address",

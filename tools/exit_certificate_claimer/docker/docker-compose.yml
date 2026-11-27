@@ -37,6 +37,12 @@ services:
       - "--port"
       - "${CLAIMER_PORT:-8080}"
       - "--log-json=${CLAIMER_LOG_JSON:-false}"
+    environment:
+      # Optional: serve the run archived at gs://<bucket>/<prefix> instead of the files of output/
+      # (read through --run-source). Needs Application Default Credentials with read access to the
+      # bucket inside the container, e.g. GOOGLE_APPLICATION_CREDENTIALS pointing at a mounted file.
+      CLAIMER_RUN_SOURCE: "${CLAIMER_RUN_SOURCE:-}"
+      GOOGLE_APPLICATION_CREDENTIALS: "${GOOGLE_APPLICATION_CREDENTIALS_IN_CONTAINER:-}"
     volumes:
       # The exit_certificate working dir (parameters.toml + output/). Read-write because L1 sync
       # keeps its own SQLite DBs up to date inside output/. The container runs as appuser (uid

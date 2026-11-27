@@ -31,6 +31,9 @@ tools/exit_certificate/
 ├── step_i.go            — assemble final certificate (LER, prev LER, L1InfoTreeLeafCount)
 ├── step_check.go        — prerequisite checks (Anvil, L1 RPC, network type, threshold, gas token)
 ├── delta.go             — delta mode (options.deltaMode): previous-run loading, delta CHECK/F/G2/H, full certificate + manifest
+├── archive.go           — --step upload (archive the output dir in GCS) and gs:// previousRun download
+├── metafiles.go         — options.archiveMetaFiles: --step upload copies extra files into <outputDir>/metafiles/
+├── runarchive/          — write-once object-store archive of a run dir (ObjectStore, GCS impl, manifest, Upload/Download)
 ├── step_sign.go         — ECDSA certificate signing
 ├── step_submit.go       — send certificate to agglayer via gRPC
 ├── step_wait.go         — poll agglayer until certificate is settled or in error
@@ -41,14 +44,20 @@ tools/exit_certificate/
 
 Full pipeline order (`runAll`): **CHECK → 0 → A → B → C → D → E → F → G → H → I → SIGN**
 
-Post-submission steps (explicit only, not part of `runAll`): **SUBMIT → WAIT**
+Post-submission steps (explicit only, not part of `runAll`): **SUBMIT → WAIT → UPLOAD**
+
+`--step` takes a step, a list (`h,i,sign`) or a range (`parseStepList`/`expandStepRange` over
+`orderedSteps`, which ends `sign, submit, wait, upload`; `pending_claims` is not in it). An open range `X-`
+that starts at or before `sign` ends at `lastAutoStep` (`sign`), so `f-` never submits by surprise; one
+that starts at a post-submission step runs to the end: `submit-` = submit, wait, upload. Explicit ends can
+name them (`0-wait`, `sign-upload`, `submit-upload`).
 
 Each step reads its inputs from disk (output dir) and writes its outputs to disk. The
 `runAll` path passes data in memory directly; `runSingleStep` always loads from disk.
 
 ### Delta mode (`options.deltaMode`)
 
-`Run` dispatches to `runDeltaSteps` (delta.go) instead of `runAll` when `options.deltaMode=true`. It builds a certificate with **only the new exits** of `options.deltaExitsFile`, chained on the settled previous run (`options.previousRun`, loaded by `loadPreviousRun`: `exit-certificate-full.json` if present, else `exit-certificate-signed.json`; plus `step-wait-result.json` — must be `Settled` — and `step-g-l2bridgesyncerlite.sqlite`). Pipeline: **CHECK → F → G2 → H → I → SIGN** (`runDelta`); SUBMIT/WAIT are explicit as always. Single steps available: `sign`, `submit`, `wait`. Steps 0/A/B/C/D/E are skipped. The delta output dir must differ from `previousRun`.
+`Run` dispatches to `runDeltaSteps` (delta.go) instead of `runAll` when `options.deltaMode=true`. It builds a certificate with **only the new exits** of `options.deltaExitsFile`, chained on the settled previous run (`options.previousRun`, loaded by `loadPreviousRun`: `exit-certificate-full.json` if present, else `exit-certificate-signed.json`; plus `step-wait-result.json` — must be `Settled` — and `step-g-l2bridgesyncerlite.sqlite`). Pipeline: **CHECK → F → G2 → H → I → SIGN** (`runDelta`); SUBMIT/WAIT/UPLOAD are explicit as always. Single steps available: `recoveries`, `sign`, `submit`, `wait`, `upload`; the last four also as lists and ranges (`submit-`, `sign-upload`; `deltaStepList` validates them). Steps 0/A/B/C/D/E are skipped. The delta output dir must differ from `previousRun`.
 
 - **Delta exits file** (`DeltaExitsFile`, `LoadDeltaExits`): `{"bridge_exits": [...]}` with the certificate's `BridgeExit` JSON. Transfer exits only, amount > 0, token_info required, `dest_network` ≠ L2 network. `metadata` is the **raw** leaf metadata (plain hex, no `0x`, even length — `validateDeltaRawMetadata` checks the raw text because `BridgeExit.UnmarshalJSON` turns a malformed value into empty bytes silently); when empty it is generated from the L2 bridge (`generateMetadata`, via `deltaRawMetadata`).
 - **CHECK (delta)** — `runStepCheck(…, prev)`: Anvil not required; check 9 (AET-11) becomes `checkDeltaUnsettledExits` → `verifyChainsOnPreviousRun`: the agglayer `settled_ler` must equal the previous certificate's `new_local_exit_root` and the next height must be previous + 1 (mismatch wraps `errUnsettledBridgeExits`; pending certificates fail via `fetchSettledNetworkState`). `ignoreLERMismatch` is rejected by `LoadConfig` with `deltaMode` (`validateDeltaOptions`): the delta chains on `previousRun` by construction, so Step H (`runStepHDelta`) never downgrades the check either.
@@ -56,6 +65,15 @@ Each step reads its inputs from disk (output dir) and writes its outputs to disk
 - **G2 (delta)** — `RunStepG2Delta`: copies the previous lite DB to `step-g-l2bridgesyncerlite.sqlite`, checks its root equals the previous `new_local_exit_root`, then `BridgeSyncerLite.AppendBridges` appends the leaves built by `liteLeavesFromExits` (the same encoding path as `buildLiteTreeFromCertificate`) with deposit counts continuing from `NextDepositCount` and a synthetic block `NextBlockNum` (the tree's last root is block ordered, so new leaves must sort after the old ones). `rejectDuplicateLeaves` refuses a new leaf whose hash equals **any leaf of the copied DB** (previous exits and older L2 bridges, via `GetBridges`) or another new leaf: the claimer indexes leaves by hash. No shadow-fork. It still needs the L2 RPC (`fetchL2GasTokenInfo`, and `generateMetadata` for exits without `metadata`).
 - **H (delta)** — `RunStepHDelta`: `PreviousLocalExitRoot` = previous `new_local_exit_root`, `Height` = previous + 1, cross-checked with the agglayer.
 - **Outputs:** `exit-certificate-signed.json` (delta exits only — what is submitted), `exit-certificate-full.json` (`buildFullCertificate`: all exits, previous first, latest root — input of the next delta and of the claimer), `delta-manifest.json` (`DeltaManifest`), the lite DB with all leaves and `step-wait-result.json` after WAIT.
+
+### Archive (`--step upload`, gs:// `previousRun`) — `archive.go`, `runarchive/`
+
+Runs are archived in a write-once GCS bucket (`polygonlabs-zkevm-prod-let-archive` mainnet, `polygonlabs-zkevm-bali-let-archive` Bali), one prefix per run: `<options.archiveURI>/<networkID>/<height %010d>` (`runarchive.Location.Run`), from the certificate the run settled — one height is one run (write-once). Every file is stored zstd-compressed as `<path>.zst`; only the manifest is plain JSON.
+
+- **`runarchive` package** (shared with the claimer): `ObjectStore` (`Attrs`/`NewReader`/`Create`, `Create` never overwrites → `ErrObjectExists`), `GCSStore` (ADC; `If(DoesNotExist)` precondition, CRC32C sent and checked, custom metadata, no `Content-Encoding` so GCS never transcodes; honours `STORAGE_EMULATOR_HOST`), `Manifest` (`archive-manifest.json`, `compression: zstd`: per file the original path/size/SHA-256 and the object name/size/CRC32C + free-form `Info`, uploaded **last** — a prefix without it is incomplete → `ErrIncompleteRun`), `CollectFiles` (always drops `-wal`/`-shm`/`-journal`, `.partial` and the manifest; symlinks are an error), `Upload` (compresses each file to a temp file in `tmpDir` — the CRC32C must be known before the upload — and stores the original SHA-256 as object metadata `source-sha256`; an object already there with the same `source-sha256` is reused → resumable even if recompressing gives other bytes; another → `ErrObjectConflict`; existing manifest: same original files → no-op `AlreadyComplete`, else `ErrRunExists`), `Download` (+`Select`; decompresses on the fly, verifies object size/CRC32C and file size/SHA-256 → `ErrChecksumMismatch`; writes to `.partial` then renames; before reusing or replacing a file removes its stale `-wal`/`-shm`/`-journal` (`removeStaleSideFiles`), unless another process has the DB open (fcntl `F_GETLK` on the `-shm` DMS byte and the main file's lock bytes, `sqlitelock_unix.go`; no detection on non-unix) → `ErrFileInUse`; the target dir must hold only this run: a different local manifest copy or a file not in the manifest → `ErrCacheDirMismatch`), `CacheDir(base, loc)` = `<base>/<bucket>/<prefix>`. The `ObjectStore` mock is generated by mockery (`runarchive/mocks`); `runarchive/archivetest.NewStore` backs it with a map for tests.
+- **`--step upload`** (`runUpload`, last step of `orderedSteps` — `--step submit-` runs submit, wait, upload — also allowed in delta mode): needs `options.archiveURI` (the base), a `Settled` `step-wait-result.json` and the certificate (`exit-certificate-signed.json`, or `exit-certificate-full.json` in delta mode). The run prefix comes from the certificate header (`readCertificateHeader`: streams only `network_id`/`height`/`prev_local_exit_root`/`new_local_exit_root`, which come first; `runCertificateHeader` checks `l2NetworkId` and the Step H height). Compressed files are staged in a per-upload subdirectory of `<ArchiveCacheDir>/.upload-tmp` (removed on return; entries older than 24 h, left by a killed upload, are removed at start — `prepareUploadTmpDir`). Skips the claimer's `FileClaimerL1InfoTreeDB`/`FileClaimerMultidownloadDB` and `archiveCacheDir` when inside `outputDir` (`uploadSkip`); checkpoints (`PRAGMA wal_checkpoint(TRUNCATE)`) every `.sqlite` with a non-empty WAL first (`checkpointSQLiteFiles`, fails if busy). Manifest `Info`: tool/toolVersion/mode/l2NetworkId/certificateHash/height/prevLocalExitRoot/newLocalExitRoot/createdAt (+ `previousRunArchive` from `delta-manifest.json`). Writes a local copy `archive-manifest.json` in `outputDir` (excluded from collection, so a re-run is a no-op); `pending_claims` warns when it exists.
+- **Meta files** (`options.archiveMetaFiles`, `metafiles.go`): only `runUpload` uses them: right before `CollectFiles` it calls `copyMetaFiles`, which copies each listed file **as is** to `<outputDir>/metafiles/<basename>` (written to `.partial`, then renamed) and removes the entries of `metafiles/` no longer listed; `Upload` then compresses them once like any other file (object `metafiles/<basename>.zst`; an already compressed input is compressed again, no special case). Not copied (warning) when `outputDir` already has `archive-manifest.json` (write-once archive, the re-run stays a no-op). `validateArchiveMetaFiles` (`LoadConfig`) rejects empty entries and duplicate basenames; missing files / non-regular files fail at copy time. Neither the delta nor the claimer downloads `metafiles/`.
+- **gs:// `previousRun`** (`resolvePreviousRun`, called by `runDeltaSteps` for `all` and `recoveries` only): downloads `selectPreviousRunFiles` (full else signed certificate, wait result, lite DB — required; `delta-manifest.json`, `step-0-lbt`/`step-c`/`step-f-checks`, `recoveries/**` when archived) into `runarchive.CacheDir(ArchiveCacheDir(opts), loc)` and rewrites `options.previousRun` to it; `options.PreviousRunArchive`/`PreviousRunArchiveManifestSHA256` (runtime only) end up in `DeltaManifest`. `ArchiveCacheDir` defaults to `archive-cache` next to `outputDir` (exported: the claimer's `--run-source` uses it). Both functions take an `archiveOpener` (`runarchive.Open` in production) so tests inject the mock.
 
 ### Recoveries step (`--step recoveries`, delta mode only)
 
@@ -267,8 +285,11 @@ divergence risk, and verifies the off-chain reconstruction against it.
    > limits. Transient fork errors are retried (`isTransientForkError`,
    > `--retries`/`--fork-retry-backoff`). For a large replay, fork against a **local archive node**.
 2. **Fund the senders** — Anvil runs with `--auto-impersonate`, so any account can send txs; each
-   sender's ETH balance is set once with `anvil_setBalance`. For ERC-20 exits, the sender's token
-   balance is patched to `MaxUint256` via storage and a single `approve(bridge, MaxUint256)` is sent
+   sender's ETH balance is set once with `anvil_setBalance` to `largeETHBalance` (2^255 — **not**
+   `MaxUint256`: Anvil credits priority fees to the fork's zero-address beneficiary with a wrapping add,
+   and the zero address is itself a replay sender when it holds a native exit, e.g. its genesis 1 wei;
+   at `MaxUint256` it wrapped to a few wei and its `bridgeAsset` never mined). For ERC-20 exits, the
+   sender's token balance is patched to `MaxUint256` via storage and a single `approve(bridge, MaxUint256)` is sent
    per (sender, token).
 3. **Replay bridge exits via a send/collect pipeline** — for each `BridgeExit`, send `bridgeAsset`
    (`forceUpdateGlobalExitRoot=false`, empty `permitData`). `replayBridgeExits` does **not** wait for
@@ -304,7 +325,8 @@ divergence risk, and verifies the off-chain reconstruction against it.
 
    A **receipt timeout** (`receiptPollTimeout`, 300s — the block did not mine in time, typically a
    slow remote fork backend) is **not** fatal: the exit is deferred and retried after the
-   send/collect phase drains (`retryDeferredExit`). The retry loops **unbounded** until the exit
+   send/collect phase drains (`retryDeferredExit`). The retry first **re-funds the sender** (so a tx
+   stuck in the pool for lack of funds can mine) and then loops **unbounded** until the exit
    mines: each iteration **re-polls the current tx** (Anvil has usually mined its block by then) and,
    only if the receipt is still absent — i.e. the tx never landed — **re-sends** the `bridgeAsset`
    and polls the new hash next. Re-polling before each re-send is what keeps the tree correct: a tx
@@ -439,6 +461,7 @@ Notable optional fields:
 - `options.ignoreLERMismatch` — `false` (default). When `true`, the AET-11 unsettled-bridge-exits verification (Step CHECK check 9 via `reportUnsettledExitsFailure`, the Step 0 guard and Step H's LER cross-check via `suppressUnsettledExitsError`) is downgraded from an abort to a warning; the Step CHECK result still records the real outcome. The certificate then chains from a `PrevLocalExitRoot` that does not cover every emitted bridge exit, so the agglayer will most likely reject it — enable only to inspect such a snapshot knowingly. Step H's pending-certificate guard is unaffected. Rejected with `deltaMode`.
 - `options.deltaMode` / `options.previousRun` / `options.deltaExitsFile` — see [Delta mode](#delta-mode-optionsdeltamode). `previousRun` and `deltaExitsFile` are required with `deltaMode` and rejected without it; relative paths resolve from the config file directory.
 - `options.recoveriesPath` — only with `deltaMode`; input of the [recoveries step](#recoveries-step---step-recoveries-delta-mode-only).
+- `options.archiveURI` — archive base `gs://<bucket>/<prefix>` for `--step upload` (the run goes to `<base>/<networkID>/<height>`) (validated by `LoadConfig` with `runarchive.ParseURI`). `options.archiveCacheDir` — base dir of downloaded archives (relative to the config dir). `options.previousRun` may be a `gs://` URI too (kept verbatim, not resolved as a path). `options.archiveMetaFiles` — extra files `--step upload` copies into `<outputDir>/metafiles/` and archives with the run (relative to the config dir, unique basenames).
 - `options.verifyNewLocalExitRootUsingShadowFork` — `true` (default). When `true`, Step G2 spins up the Anvil shadow-fork, replays every exit against the real bridge contract, recovers the on-chain metadata, and verifies the off-chain leaf encoding against the contract's `getRoot()` via a deposit-count-ordered copy of the exits (requires Anvil). When `false`, Step G2 skips Anvil and trusts the off-chain leaf encoding/metadata. In both modes the certificate keeps its deterministic exit order and the `NewLocalExitRoot` is the lite exit tree root in that order (G1's genesis→fork bridges + the certificate's exits).
 
 Defaults applied by `LoadConfig`:

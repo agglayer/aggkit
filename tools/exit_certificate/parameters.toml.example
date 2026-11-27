@@ -66,6 +66,20 @@ rpcDelayMs = 10
 # directory. Default: "output".
 outputDir = "./output"
 
+# OPTIONAL — archive base for --step upload: the run goes to <archiveURI>/<networkID>/<height> (from the
+# certificate), each file compressed with zstd. Default: "" (only the upload step needs it). With deltaMode,
+# previousRun can be the URI of an archived run, e.g. gs://<bucket>/runs/1/0000000004.
+#archiveURI = "gs://polygonlabs-zkevm-bali-let-archive/runs"
+
+# OPTIONAL — where archived runs are downloaded (gs:// previousRun, claimer --run-source).
+# Default: "archive-cache" next to outputDir.
+#archiveCacheDir = "./archive-cache"
+
+# OPTIONAL — extra files that document the run (notes, inputs...), archived by --step upload: it copies them
+# into <outputDir>/metafiles/<file name> and uploads them compressed with zstd like the rest of the run. File
+# names must be unique; relative paths resolve from this file's directory. Never list files holding secrets.
+#archiveMetaFiles = ["./RUN-NOTES.md"]
+
 # First L1 block to scan in Step E. Default: 0 (genesis).
 l1StartBlock = 0
 

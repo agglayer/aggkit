@@ -213,3 +213,9 @@ packages:
       RollupContractReader:
       LogFilterer:
       HealthChecker:
+  github.com/agglayer/aggkit/tools/exit_certificate/runarchive:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: false
+    interfaces:
+      ObjectStore:

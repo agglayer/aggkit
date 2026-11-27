@@ -41,8 +41,15 @@ const (
 	// floor per tx (which at mainnet scale dominated the whole replay).
 	receiptPollInterval = 25 * time.Millisecond
 
-	// largeETHBalance is MaxUint256 in hex, enough for any bridgeAsset call regardless of exit amounts.
-	largeETHBalance = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	// largeETHBalance is 2^255 in hex: the ETH balance given to every replay sender. It covers any
+	// bridgeAsset call (native value + gas) regardless of exit amounts, and leaves 2^255 of headroom
+	// for incoming credits. It must NOT be MaxUint256: Anvil credits each block's priority fees to the
+	// block beneficiary with a wrapping add (foundry >= 1.10 / evm2), and the default fork beneficiary
+	// is the zero address — which is also the replay sender of the SC-locked exit when exitAddress is
+	// left at its zero default. A MaxUint256 sender that is the beneficiary wraps to a few wei as soon
+	// as another sender's tx mines, so its own bridgeAsset can never mine (receipt timeout) and its
+	// re-send is rejected with "Insufficient funds for gas * price + value".
+	largeETHBalance = "0x8000000000000000000000000000000000000000000000000000000000000000"
 
 	abiFuncSelectorSize = 4 // bytes in an ABI function selector
 
@@ -937,10 +944,12 @@ func replayBridgeExits(
 
 // retryDeferredExit recovers one exit whose receipt timed out during the main send/collect phase.
 //
-// It runs after all sends are done and Anvil is idle, and retries **unbounded** until the exit mines:
-// each iteration re-polls the current tx (under a slow remote fork backend a block can take longer
-// than receiptPollTimeout to mine, so the receipt has very likely appeared by now — waitForReceipt
-// returns as soon as it does, accounting for the block interval). Only if the receipt is *still*
+// It runs after all sends are done and Anvil is idle. It first re-funds the sender (SetSenderBalance),
+// so a tx stuck in Anvil's pool because its sender ran out of balance can mine, and then retries
+// **unbounded** until the exit mines: each iteration re-polls the current tx (under a slow remote
+// fork backend a block can take longer than receiptPollTimeout to mine, so the receipt has very
+// likely appeared by now — waitForReceipt returns as soon as it does, accounting for the block
+// interval). Only if the receipt is *still*
 // absent after that full poll window — meaning the tx never landed in Anvil's mempool — is the
 // bridgeAsset re-sent, and the next iteration polls the new hash. A slow backend is therefore never
 // abandoned; the only exits are success, a revert, or context cancellation.
@@ -953,6 +962,13 @@ func replayBridgeExits(
 func retryDeferredExit(
 	ctx context.Context, backend forkBackend, s sentTx,
 ) (bridgesyncerlite.BridgeLeaf, error) {
+	// Re-fund the sender first. A tx that Anvil keeps pending because its sender's balance dropped
+	// below its cost (see largeETHBalance) then mines in the next block, so the re-poll below finds
+	// its receipt instead of re-sending — and a re-send, if still needed, is not rejected for funds.
+	sender := s.job.bridge.DestinationAddress
+	if err := backend.SetSenderBalance(ctx, sender); err != nil {
+		return bridgesyncerlite.BridgeLeaf{}, fmt.Errorf("re-fund sender %s: %w", sender.Hex(), err)
+	}
 	hash := s.hash
 	for attempt := 1; ; attempt++ {
 		logs, err := backend.WaitForReceipt(ctx, hash)
