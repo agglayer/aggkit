@@ -13,9 +13,9 @@ import (
 func TestHealthCheckURL(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "http://127.0.0.1:8080/claimer/v1/health", HealthCheckURL("127.0.0.1", 8080))
+	require.Equal(t, "http://127.0.0.1:8080/claimer/v2/health", HealthCheckURL("127.0.0.1", 8080))
 	// IPv6 hosts get bracketed by net.JoinHostPort.
-	require.Equal(t, "http://[::1]:9000/claimer/v1/health", HealthCheckURL("::1", 9000))
+	require.Equal(t, "http://[::1]:9000/claimer/v2/health", HealthCheckURL("::1", 9000))
 }
 
 // The tests below deliberately do not call t.Parallel: httptest.Server.Close calls
@@ -26,12 +26,12 @@ func TestHealthCheckURL(t *testing.T) {
 // the shared transport out from under them.
 func TestHealthCheckOK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, apiBasePath+"/health", r.URL.Path)
+		require.Equal(t, apiBasePathV2+"/health", r.URL.Path)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	err := HealthCheck(context.Background(), srv.URL+apiBasePath+"/health", time.Second)
+	err := HealthCheck(context.Background(), srv.URL+apiBasePathV2+"/health", time.Second)
 	require.NoError(t, err)
 }
 
@@ -73,6 +73,6 @@ func TestHealthCheckAgainstServer(t *testing.T) {
 	ts := httptest.NewServer(srv.router)
 	defer ts.Close()
 
-	err = HealthCheck(context.Background(), ts.URL+apiBasePath+"/health", time.Second)
+	err = HealthCheck(context.Background(), ts.URL+apiBasePathV2+"/health", time.Second)
 	require.NoError(t, err)
 }

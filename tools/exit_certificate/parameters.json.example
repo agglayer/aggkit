@@ -22,6 +22,7 @@
         "nativeSCLockedFromContracts": true,
         "skipSCLockedValue": false,
         "ignoreUnclaimed": false,
+        "pendingClaimMessages": false,
         "ignoreBalanceMismatch": false,
         "capMode": "none",
         "genesisPrefundETHWei": "",

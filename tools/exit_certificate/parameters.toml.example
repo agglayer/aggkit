@@ -114,6 +114,10 @@ skipSCLockedValue = false
 # Default: false.
 ignoreUnclaimed = false
 
+# Step pending_claims also lists the unclaimed pre-certificate L2->L1 messages (claimMessage), not only
+# the assets. The --pending-claim-messages CLI flag overrides it. Default: false (assets only).
+pendingClaimMessages = false
+
 # Do not abort Step F on token balance mismatches; instead produce step-f-capped-certificate.json
 # with mismatched exits trimmed so their per-token sum equals min(agglayer, lbt). Default: false.
 ignoreBalanceMismatch = false

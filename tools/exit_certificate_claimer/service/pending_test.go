@@ -102,7 +102,7 @@ func TestListBridgesIncludesPending(t *testing.T) {
 	t.Parallel()
 	f := newPendingFixture(t)
 
-	bridges, err := f.claimer.ListBridges(f.dest)
+	bridges, err := f.claimer.ListBridgesV2(f.dest)
 	require.NoError(t, err)
 	require.Len(t, bridges, 3)
 	// Certificate exit first, then the pending ones with the deposit count from the file.
@@ -112,7 +112,7 @@ func TestListBridgesIncludesPending(t *testing.T) {
 	require.Equal(t, "100", bridges[1].Amount)
 	require.Equal(t, "0x"+common.Bytes2Hex([]byte("md")), bridges[1].Metadata)
 
-	other, err := f.claimer.ListBridges(common.HexToAddress("0xee"))
+	other, err := f.claimer.ListBridgesV2(common.HexToAddress("0xee"))
 	require.NoError(t, err)
 	require.Empty(t, other)
 }
@@ -125,7 +125,7 @@ func TestListBridgesSkipsPendingAlreadyInCertificate(t *testing.T) {
 	dup.DepositCount = 2
 	f.claimer.WithPendingBridges([]exitcertificate.PendingBridge{dup})
 
-	bridges, err := f.claimer.ListBridges(f.dest)
+	bridges, err := f.claimer.ListBridgesV2(f.dest)
 	require.NoError(t, err)
 	require.Len(t, bridges, 1)
 }
@@ -134,7 +134,7 @@ func TestBuildClaimParamsIncludesPending(t *testing.T) {
 	t.Parallel()
 	f := newPendingFixture(t)
 
-	claims, err := f.claimer.BuildClaimParams(context.Background(), f.dest, nil)
+	claims, err := f.claimer.BuildClaimParamsV2(context.Background(), f.dest, nil)
 	require.NoError(t, err)
 	require.Len(t, claims, 3)
 	require.Equal(t, uint32(2), claims[0].DepositCount)
@@ -153,7 +153,7 @@ func TestBuildClaimParamsIncludesPending(t *testing.T) {
 
 	// Selecting one pending deposit returns only that one.
 	dc := uint32(1)
-	claims, err = f.claimer.BuildClaimParams(context.Background(), f.dest, &dc)
+	claims, err = f.claimer.BuildClaimParamsV2(context.Background(), f.dest, &dc)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 	require.Equal(t, uint32(1), claims[0].DepositCount)
@@ -167,7 +167,7 @@ func TestBuildClaimParamsPendingMismatch(t *testing.T) {
 	bad.Amount = big.NewInt(999)
 	f.claimer.WithPendingBridges([]exitcertificate.PendingBridge{bad})
 
-	_, err := f.claimer.BuildClaimParams(context.Background(), f.dest, nil)
+	_, err := f.claimer.BuildClaimParamsV2(context.Background(), f.dest, nil)
 	require.ErrorContains(t, err, "does not match the local exit tree")
 }
 

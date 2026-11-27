@@ -14,10 +14,17 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-// PendingBridge is an L2→L1 asset bridge emitted before the exit certificate that has not been
-// claimed on L1. It is not part of the certificate's bridge_exits (it belongs to a previously
-// settled certificate), but its leaf is in the local exit tree, so it is provable against the
-// certificate's NewLocalExitRoot. Metadata is the raw bridge metadata (what claimAsset needs).
+// Leaf types of the bridge leaves the PENDING_CLAIMS step keeps.
+const (
+	pendingLeafTypeAsset   uint8 = 0
+	pendingLeafTypeMessage uint8 = 1
+)
+
+// PendingBridge is an L2→L1 bridge (asset, leafType 0, or message, leafType 1) emitted before the
+// exit certificate that has not been claimed on L1. It is not part of the certificate's bridge_exits
+// (it belongs to a previously settled certificate), but its leaf is in the local exit tree, so it is
+// provable against the certificate's NewLocalExitRoot. Metadata is the raw bridge metadata (what
+// claimAsset / claimMessage need).
 type PendingBridge struct {
 	DepositCount       uint32         `json:"depositCount"`
 	BlockNumber        uint64         `json:"blockNumber"`
@@ -31,16 +38,19 @@ type PendingBridge struct {
 	TxHash             common.Hash    `json:"txHash"`
 }
 
-// RunStepPending lists the L2→L1 asset bridges emitted before the exit certificate that are still
-// unclaimed on L1.
+// RunStepPending lists the L2→L1 bridges emitted before the exit certificate that are still unclaimed
+// on L1: the assets and, only with options.pendingClaimMessages, the messages.
 //
 // Approach:
 //  1. Read every leaf of the local exit tree DB written by Step G2 (genesis→targetBlock bridges
 //     followed by the certificate's exits). The last gResult.BridgeExitCount leaves belong to the
 //     certificate and are skipped: the claimer already serves them.
-//  2. Keep the assets (leaf_type=0) destined to L1 (destination_network=0). Messages need
-//     claimMessage, which the claimer does not support.
-//  3. Call isClaimed(depositCount, l2NetworkId) on the L1 bridge for each one and keep the unclaimed.
+//  2. Keep the assets (leaf_type=0) destined to L1 (destination_network=0) and, with
+//     options.pendingClaimMessages, the messages (leaf_type=1) too. A message is claimed with
+//     claimMessage, which the claimer serves through its API v2. The option is off by default: the first
+//     mainnet run listed assets only, and the default keeps that output.
+//  3. Call isClaimed(depositCount, l2NetworkId) on the L1 bridge for each one and keep the unclaimed
+//     (claimAsset and claimMessage share the claimed bitmap).
 func RunStepPending(
 	ctx context.Context, cfg *Config, dbPath string, gResult *StepGResult,
 ) ([]PendingBridge, error) {
@@ -75,19 +85,27 @@ func RunStepPending(
 		return nil, fmt.Errorf("read bridges from %q: %w", dbPath, err)
 	}
 
-	candidates, err := selectPendingCandidates(bridges, gResult.BridgeExitCount)
+	withMessages := cfg.Options.PendingClaimMessages
+	if withMessages {
+		log.Info("Mode: assets and messages (options.pendingClaimMessages=true)")
+	} else {
+		log.Info("Mode: assets only (options.pendingClaimMessages=false): messages are not listed")
+	}
+
+	candidates, err := selectPendingCandidates(bridges, gResult.BridgeExitCount, withMessages)
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("Local exit tree: %d leaves, %d pre-certificate asset exits to L1 to check",
-		len(bridges), len(candidates))
+	log.Infof("Local exit tree: %d leaves, %d pre-certificate exits to L1 to check (%d messages)",
+		len(bridges), len(candidates), countPendingMessages(candidates))
 
 	claimedSet, err := checkClaimedOnL1(ctx, cfg, candidates)
 	if err != nil {
 		return nil, fmt.Errorf("check isClaimed on L1: %w", err)
 	}
 	pending := filterPendingBridges(candidates, claimedSet)
-	log.Infof("Already claimed on L1: %d, pending: %d", len(claimedSet), len(pending))
+	log.Infof("Already claimed on L1: %d, pending: %d (%d messages)",
+		len(claimedSet), len(pending), countPendingMessages(pending))
 	return pending, nil
 }
 
@@ -96,10 +114,13 @@ func pendingDBPath(dir string) string {
 	return filepath.Join(dir, fileStepGLiteDB)
 }
 
-// selectPendingCandidates returns, ordered by deposit count, the asset bridges to L1 among the
-// leaves emitted before the certificate. certificateExits is the number of leaves the certificate
-// appended at the end of the tree (StepGResult.BridgeExitCount).
-func selectPendingCandidates(bridges []bridgesyncerlite.BridgeLeaf, certificateExits uint64) ([]PendingBridge, error) {
+// selectPendingCandidates returns, ordered by deposit count, the asset bridges to L1 (and, when
+// withMessages, the message bridges to L1 too) among the leaves emitted before the certificate.
+// certificateExits is the number of leaves the certificate appended at the end of the tree
+// (StepGResult.BridgeExitCount).
+func selectPendingCandidates(
+	bridges []bridgesyncerlite.BridgeLeaf, certificateExits uint64, withMessages bool,
+) ([]PendingBridge, error) {
 	if certificateExits > uint64(len(bridges)) {
 		return nil, fmt.Errorf("the certificate has %d bridge exits but the local exit tree has only %d leaves "+
 			"(run step g first)", certificateExits, len(bridges))
@@ -112,7 +133,11 @@ func selectPendingCandidates(bridges []bridgesyncerlite.BridgeLeaf, certificateE
 		if uint64(b.DepositCount) >= preCertificate {
 			continue
 		}
-		if b.LeafType != 0 || b.DestinationNetwork != 0 {
+		if b.DestinationNetwork != 0 {
+			continue
+		}
+		isMessage := withMessages && b.LeafType == pendingLeafTypeMessage
+		if b.LeafType != pendingLeafTypeAsset && !isMessage {
 			continue
 		}
 		candidates = append(candidates, PendingBridge{
@@ -130,6 +155,17 @@ func selectPendingCandidates(bridges []bridgesyncerlite.BridgeLeaf, certificateE
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].DepositCount < candidates[j].DepositCount })
 	return candidates, nil
+}
+
+// countPendingMessages returns how many of the bridges are messages (leaf_type=1).
+func countPendingMessages(bridges []PendingBridge) int {
+	n := 0
+	for i := range bridges {
+		if bridges[i].LeafType == pendingLeafTypeMessage {
+			n++
+		}
+	}
+	return n
 }
 
 // checkClaimedOnL1 calls isClaimed(depositCount, l2NetworkId) on the L1 bridge for each candidate

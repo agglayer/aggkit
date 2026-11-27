@@ -436,6 +436,8 @@ func TestLoadConfig_DefaultOptions(t *testing.T) {
 	require.Equal(t, 0, cfg.Options.RPCDelayMs)
 	require.Equal(t, uint64(0), cfg.Options.L1StartBlock)
 	require.True(t, cfg.Options.UseAgglayerAdminToStepFCheck)
+	// Step PENDING_CLAIMS lists assets only unless asked for the messages too.
+	require.False(t, cfg.Options.PendingClaimMessages)
 }
 
 func TestLoadConfig_RelativeOutputDir(t *testing.T) {
@@ -565,7 +567,8 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 			"agglayerAdminURL": "https://admin.example.com",
 			"ignoreGenesisBalance": true,
 			"ignoreBalanceMismatch": true,
-			"ignoreUnclaimed": true
+			"ignoreUnclaimed": true,
+			"pendingClaimMessages": true
 		}
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
@@ -575,6 +578,7 @@ func TestMergeOptions_BoolFlags(t *testing.T) {
 	require.True(t, cfg.Options.IgnoreGenesisBalance)
 	require.True(t, cfg.Options.IgnoreBalanceMismatch)
 	require.True(t, cfg.Options.IgnoreUnclaimed)
+	require.True(t, cfg.Options.PendingClaimMessages)
 }
 
 func TestMergeOptions_UseAgglayerAdminToStepFCheck(t *testing.T) {

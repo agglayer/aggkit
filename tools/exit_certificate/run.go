@@ -73,6 +73,17 @@ func isShellSafeRune(r rune) bool {
 		(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
 
+// FlagPendingClaimMessages is the CLI flag that overrides options.pendingClaimMessages (Step
+// PENDING_CLAIMS also lists the unclaimed pre-certificate L2→L1 messages).
+const FlagPendingClaimMessages = "pending-claim-messages"
+
+// applyCLIOverrides applies the CLI flags that override config options, only when they are given.
+func applyCLIOverrides(c *cli.Context, cfg *Config) {
+	if c.IsSet(FlagPendingClaimMessages) {
+		cfg.Options.PendingClaimMessages = c.Bool(FlagPendingClaimMessages)
+	}
+}
+
 // Run is the CLI entry point.
 func Run(c *cli.Context) error {
 	ctx := context.Background()
@@ -91,6 +102,7 @@ func Run(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	applyCLIOverrides(c, cfg)
 
 	printStartupBanner(cfg)
 

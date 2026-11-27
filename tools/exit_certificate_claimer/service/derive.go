@@ -42,6 +42,15 @@ func loadOrDeriveConfig(ctx context.Context, c *cli.Context, logger *log.Logger)
 	if c.IsSet("port") {
 		cfg.Port = c.Int("port")
 	}
+	// --message-routes replaces the routes of the config file; it is the only way to set them on a
+	// config derived from an exit_certificate one.
+	if routesPath := c.String("message-routes"); routesPath != "" {
+		routes, err := LoadMessageRoutesFile(routesPath)
+		if err != nil {
+			return nil, fmt.Errorf("--message-routes: %w", err)
+		}
+		cfg.MessageRoutes = routes
+	}
 	return cfg, nil
 }
 

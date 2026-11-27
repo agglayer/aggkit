@@ -23,6 +23,23 @@ l1InfoTreeDBPath = "./l1infotree.sqlite"
 # Source network of the exits. Leave 0 to default to the certificate's network_id.
 networkId = 0
 
+# Message routes (optional, API v2). A Message exit (bridgeMessage) is addressed to a contract, not to
+# the holder it pays: the holder is inside the metadata. A route tells the claimer how to decode it, so
+# /claimer/v2 finds the exit by the holder's address and returns beneficiary, decoded_amount and
+# display_token. Messages of a route that is not listed are only found by their destination address.
+# metadataLayout: only "address,uint256" = abi.encode(address beneficiary, uint256 amount).
+# displayToken: the token the destination contract pays the beneficiary with.
+# Can also be given (replacing these) with --message-routes <file> (same [[messageRoutes]] list), which
+# is the way to set them with --exit-certificate-config.
+# NOTE: in TOML these tables must come after every top-level key (networkId, paths, ...).
+#[[messageRoutes]]
+#originNetwork = 1
+#originAddress = "0xBDa0B27f93B2FD3f076725b89cf02e48609bC189"        # ZkMinterBurner (zkEVM)
+#destinationNetwork = 0
+#destinationAddress = "0x70E70e58ed7B1Cec0D8ef7464072ED8A52d755eB"   # L1Escrow
+#metadataLayout = "address,uint256"
+#displayToken = { address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol = "USDC", decimals = 6 }
+
 # Optional background synchronization of the L1 Info Tree from L1.
 # When enabled = false the l1InfoTreeDBPath database is opened read-only.
 [l1Sync]

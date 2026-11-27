@@ -49,13 +49,13 @@ func TestBuildClaimParamsDepositCountFilter(t *testing.T) {
 
 	// Leaf 0 maps to deposit count 5 (offset +5 in buildTestClaimer); a non-matching filter yields none.
 	other := uint32(99)
-	claims, err := claimer.BuildClaimParams(context.Background(), destAddr, &other)
+	claims, err := claimer.BuildClaimParamsV2(context.Background(), destAddr, &other)
 	require.NoError(t, err)
 	require.Empty(t, claims)
 
 	// The exact deposit count returns just that exit.
 	match := uint32(5)
-	claims, err = claimer.BuildClaimParams(context.Background(), destAddr, &match)
+	claims, err = claimer.BuildClaimParamsV2(context.Background(), destAddr, &match)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
 	require.Equal(t, uint32(5), claims[0].DepositCount)
@@ -68,7 +68,7 @@ func TestBuildClaimParamsNilWaitResult(t *testing.T) {
 	require.NoError(t, err)
 
 	claimer := NewClaimer(log.GetDefaultLogger(), cert, &fakeLocalTree{}, &fakeL1{}, 0, nil)
-	_, err = claimer.BuildClaimParams(context.Background(), cert.Leaves[0].DestinationAddress, nil)
+	_, err = claimer.BuildClaimParamsV2(context.Background(), cert.Leaves[0].DestinationAddress, nil)
 	require.ErrorContains(t, err, "wait result is nil")
 }
 
@@ -78,7 +78,7 @@ func TestListBridgesLeafNotFound(t *testing.T) {
 	cert, err := LoadCertificate(writeSampleCert(t))
 	require.NoError(t, err)
 
-	// An empty local tree resolves no deposit counts.
+	// An empty local tree cannot hold the certificate's exits.
 	l1 := &fakeL1{
 		leaf: &l1infotreesync.L1InfoTreeLeaf{},
 	}
@@ -87,8 +87,8 @@ func TestListBridgesLeafNotFound(t *testing.T) {
 	}
 	claimer := NewClaimer(log.GetDefaultLogger(), cert, &fakeLocalTree{}, l1, 0, waitResult)
 
-	_, err = claimer.ListBridges(cert.Leaves[0].DestinationAddress)
-	require.ErrorContains(t, err, "not found in local exit tree")
+	_, err = claimer.ListBridgesV2(cert.Leaves[0].DestinationAddress)
+	require.ErrorContains(t, err, "the local exit tree has only 0 leaves")
 }
 
 func TestNetworkIDOverride(t *testing.T) {

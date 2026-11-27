@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	aggkit "github.com/agglayer/aggkit"
@@ -13,11 +14,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// apiVersion2 is the API major version this claimer serves. API v1 has been removed: the claimer and
+// its UI are deployed together, so only one version is served (see SPEC.md, "API versioning").
+const apiVersion2 = 2
+
+// supportedAPIVersions returns the API major versions this claimer serves.
+func supportedAPIVersions() []int { return []int{apiVersion2} }
+
 const (
-	apiBasePath       = "/claimer/v1"
-	destAddressParam  = "dest_address"
+	// apiBasePathV1 only keeps /health (so existing probes keep working); any other path under it
+	// answers 410 Gone.
+	apiBasePathV1     = "/claimer/v1"
+	apiBasePathV2     = "/claimer/v2"
+	addressParam      = "address"
 	depositCountParam = "deposit_count"
 	shutdownTimeout   = 5 * time.Second
+	// apiV1RemovedMsg is the error of every removed /claimer/v1 endpoint.
+	apiV1RemovedMsg = "claimer API v1 has been removed, use " + apiBasePathV2
 )
 
 // Server exposes the claimer over HTTP using Gin.
@@ -28,6 +41,8 @@ type Server struct {
 	writeTimeout time.Duration
 	claimer      *Claimer
 	router       *gin.Engine
+	// version is the build version reported by /health.
+	version VersionInfo
 }
 
 // NewServer builds the HTTP server and registers the routes.
@@ -43,12 +58,17 @@ func NewServer(cfg *Config, claimer *Claimer, logger *log.Logger) *Server {
 		writeTimeout: time.Duration(cfg.WriteTimeoutSeconds) * time.Second,
 		claimer:      claimer,
 		router:       router,
+		version:      versionInfo(),
 	}
 
-	v1 := router.Group(apiBasePath)
-	v1.GET("/health", s.handleHealth)
-	v1.GET("/bridges", s.handleBridges)
-	v1.GET("/claim-params", s.handleClaimParams)
+	v2 := router.Group(apiBasePathV2)
+	v2.GET("/health", s.handleHealthV2)
+	v2.GET("/bridges", s.handleBridgesV2)
+	v2.GET("/claim-params", s.handleClaimParamsV2)
+
+	// API v1 is gone but its /health keeps answering (with api_versions: [2]) for existing probes.
+	router.GET(apiBasePathV1+"/health", s.handleHealthV1)
+	router.NoRoute(handleRemovedV1)
 
 	return s
 }
@@ -64,7 +84,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		s.logger.Infof("claimer backend listening on %s (base path %s)", s.address, apiBasePath)
+		s.logger.Infof("claimer backend listening on %s (base path %s)", s.address, apiBasePathV2)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -80,79 +100,106 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-func (s *Server) handleHealth(c *gin.Context) {
+func versionInfo() VersionInfo {
 	v := aggkit.GetVersion()
+	return VersionInfo{
+		Version:   v.Version,
+		GitRev:    v.GitRev,
+		GitBranch: v.GitBranch,
+		BuildDate: v.BuildDate,
+		GoVersion: v.GoVersion,
+		OS:        v.OS,
+		Arch:      v.Arch,
+	}
+}
+
+// handleHealthV1 answers the legacy /claimer/v1/health so existing probes and monitoring keep working;
+// its api_versions tells a client that only v2 is served.
+func (s *Server) handleHealthV1(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{
-		Status:    "ok",
-		NetworkID: s.claimer.NetworkID(),
-		Version: VersionInfo{
-			Version:   v.Version,
-			GitRev:    v.GitRev,
-			GitBranch: v.GitBranch,
-			BuildDate: v.BuildDate,
-			GoVersion: v.GoVersion,
-			OS:        v.OS,
-			Arch:      v.Arch,
-		},
+		Status:      "ok",
+		NetworkID:   s.claimer.NetworkID(),
+		Version:     s.version,
+		APIVersions: supportedAPIVersions(),
 	})
 }
 
-func (s *Server) handleBridges(c *gin.Context) {
-	destAddr, ok := s.parseDestAddress(c)
+// handleRemovedV1 answers 410 Gone for any removed /claimer/v1 path. Other unknown paths keep the
+// default 404.
+func handleRemovedV1(c *gin.Context) {
+	if strings.HasPrefix(c.Request.URL.Path, apiBasePathV1+"/") {
+		c.JSON(http.StatusGone, apiRemovedResponse{Error: apiV1RemovedMsg, APIVersions: supportedAPIVersions()})
+	}
+}
+
+func (s *Server) handleHealthV2(c *gin.Context) {
+	c.JSON(http.StatusOK, HealthResponseV2{
+		APIVersion:  apiVersion2,
+		Status:      "ok",
+		NetworkID:   s.claimer.NetworkID(),
+		Version:     s.version,
+		APIVersions: supportedAPIVersions(),
+	})
+}
+
+func (s *Server) handleBridgesV2(c *gin.Context) {
+	address, ok := parseAddress(c, addressParam)
 	if !ok {
 		return
 	}
 
-	bridges, err := s.claimer.ListBridges(destAddr)
+	bridges, err := s.claimer.ListBridgesV2(address)
 	if err != nil {
-		s.respondError(c, http.StatusInternalServerError, err)
+		respondErrorV2(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, BridgesResponse{
-		NetworkID:          s.claimer.NetworkID(),
-		DestinationAddress: destAddr.Hex(),
-		Bridges:            bridges,
+	c.JSON(http.StatusOK, BridgesResponseV2{
+		APIVersion: apiVersion2,
+		NetworkID:  s.claimer.NetworkID(),
+		Address:    address.Hex(),
+		Bridges:    bridges,
 	})
 }
 
-func (s *Server) handleClaimParams(c *gin.Context) {
-	destAddr, ok := s.parseDestAddress(c)
+func (s *Server) handleClaimParamsV2(c *gin.Context) {
+	address, ok := parseAddress(c, addressParam)
 	if !ok {
 		return
 	}
 
-	depositCount, ok := s.parseDepositCount(c)
+	depositCount, ok := parseDepositCount(c)
 	if !ok {
 		return
 	}
 
-	claims, err := s.claimer.BuildClaimParams(c.Request.Context(), destAddr, depositCount)
+	claims, err := s.claimer.BuildClaimParamsV2(c.Request.Context(), address, depositCount)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, ErrLocalExitRootNotSettled) {
 			status = http.StatusConflict
 		}
-		s.respondError(c, status, err)
+		respondErrorV2(c, status, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, ClaimParamsResponse{
-		NetworkID:          s.claimer.NetworkID(),
-		DestinationAddress: destAddr.Hex(),
-		Claims:             claims,
+	c.JSON(http.StatusOK, ClaimParamsResponseV2{
+		APIVersion: apiVersion2,
+		NetworkID:  s.claimer.NetworkID(),
+		Address:    address.Hex(),
+		Claims:     claims,
 	})
 }
 
-// parseDestAddress reads and validates the dest_address query param, writing a 400 on failure.
-func (s *Server) parseDestAddress(c *gin.Context) (common.Address, bool) {
-	raw := c.Query(destAddressParam)
+// parseAddress reads and validates the address query param called name, writing a 400 on failure.
+func parseAddress(c *gin.Context, name string) (common.Address, bool) {
+	raw := c.Query(name)
 	if raw == "" {
-		s.respondErrorMsg(c, http.StatusBadRequest, destAddressParam+" query parameter is required")
+		respondErrorV2(c, http.StatusBadRequest, name+" query parameter is required")
 		return common.Address{}, false
 	}
 	if !common.IsHexAddress(raw) {
-		s.respondErrorMsg(c, http.StatusBadRequest, "invalid "+destAddressParam+": "+raw)
+		respondErrorV2(c, http.StatusBadRequest, "invalid "+name+": "+raw)
 		return common.Address{}, false
 	}
 	return common.HexToAddress(raw), true
@@ -160,24 +207,20 @@ func (s *Server) parseDestAddress(c *gin.Context) (common.Address, bool) {
 
 // parseDepositCount reads the optional deposit_count query param. Returns (nil, true) when absent
 // (all matching exits are returned), writing a 400 only on a malformed value.
-func (s *Server) parseDepositCount(c *gin.Context) (*uint32, bool) {
+func parseDepositCount(c *gin.Context) (*uint32, bool) {
 	raw := c.Query(depositCountParam)
 	if raw == "" {
 		return nil, true
 	}
 	v, err := strconv.ParseUint(raw, 10, 32)
 	if err != nil {
-		s.respondErrorMsg(c, http.StatusBadRequest, "invalid "+depositCountParam+": "+raw)
+		respondErrorV2(c, http.StatusBadRequest, "invalid "+depositCountParam+": "+raw)
 		return nil, false
 	}
 	dc := uint32(v)
 	return &dc, true
 }
 
-func (s *Server) respondError(c *gin.Context, status int, err error) {
-	s.respondErrorMsg(c, status, err.Error())
-}
-
-func (s *Server) respondErrorMsg(c *gin.Context, status int, msg string) {
-	c.JSON(status, errorResponse{Error: msg})
+func respondErrorV2(c *gin.Context, status int, msg string) {
+	c.JSON(status, errorResponseV2{APIVersion: apiVersion2, Error: msg})
 }

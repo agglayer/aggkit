@@ -1,0 +1,19 @@
+{
+  "api_version": 2,
+  "network_id": 1,
+  "address": "0xc0fFEE0000000000000000000000000000000003",
+  "bridges": [
+    {
+      "leaf_type": 1,
+      "origin_network": 1,
+      "origin_token_address": "0x5e4DE40000000000000000000000000000000004",
+      "destination_network": 0,
+      "destination_address": "0xc0fFEE0000000000000000000000000000000003",
+      "amount": "0",
+      "metadata": "0x000000000000000000000000a11ce0000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000003e7",
+      "deposit_count": 6,
+      "metadata_hash": "0xb630ff1f519ea60eb0577d40460ac380b500aad65bc7bfd1bc0fd8b36fbc362f",
+      "claim_method": "claimMessage"
+    }
+  ]
+}

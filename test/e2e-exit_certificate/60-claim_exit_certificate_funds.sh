@@ -6,7 +6,7 @@
 #      the exit_certificate config produced earlier
 #      (tmp/exit_certificate-kurtosis.json). The service only binds its port once
 #      its L1 Info Tree is synced up to the certificate's settlement GER, so we
-#      poll /claimer/v1/health until it is ready.
+#      poll /claimer/v2/health until it is ready.
 #   2. Run tools/exit_certificate_claimer/scripts/claim-all.sh against it, which
 #      claims every pending bridge exit for all tracked addresses (the EOAs plus
 #      the config's exitAddress).
@@ -144,7 +144,7 @@ else
 fi
 
 log_info "⏳ Wait for the claimer to sync L1 and become ready (timeout ${CLAIMER_READY_TIMEOUT}s)"
-health_url="${CLAIMER_URL}/claimer/v1/health"
+health_url="${CLAIMER_URL}/claimer/v2/health"
 ready=0
 for (( i=0; i<CLAIMER_READY_TIMEOUT; i++ )); do
     if ! claimer_alive; then
@@ -176,7 +176,7 @@ if [[ -f "$PENDING_FILE" ]]; then
     PENDING_DEPOSIT_COUNT="$(jq -r '.[0].depositCount // empty' "$PENDING_FILE")"
     PENDING_DEST="$(jq -r '.[0].destinationAddress' "$PENDING_FILE")"
     log_info "🔎 Check the claimer lists pending bridge deposit_count=${PENDING_DEPOSIT_COUNT} for ${PENDING_DEST}"
-    if ! curl -sf --get "${CLAIMER_URL}/claimer/v1/bridges" --data-urlencode "dest_address=${PENDING_DEST}" \
+    if ! curl -sf --get "${CLAIMER_URL}/claimer/v2/bridges" --data-urlencode "address=${PENDING_DEST}" \
         | jq -e --argjson dc "$PENDING_DEPOSIT_COUNT" '.bridges | any(.deposit_count == $dc)' >/dev/null; then
         log_error "claimer /bridges does not list the pending bridge deposit_count=${PENDING_DEPOSIT_COUNT}"
         exit 1

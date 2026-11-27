@@ -16,13 +16,17 @@ func main() {
 
 	app := cli.NewApp()
 	app.Name = "exit-certificate-claimer"
-	app.Usage = "Serve claimAsset parameters for the bridge exits of a settled exit certificate"
+	app.Usage = "Serve claimAsset / claimMessage parameters for the bridge exits of a settled exit certificate"
 	app.Version = aggkit.Version
 	app.Description = `Backend HTTP service for claiming the bridge exits produced by the exit_certificate tool.
 
-Given a destination address it returns:
-  - the available bridge exits for that address (GET /claimer/v1/bridges)
-  - the full set of AgglayerBridge.claimAsset parameters per exit (GET /claimer/v1/claim-params)
+Given an address it returns:
+  - the available bridge exits for that address (GET /claimer/v2/bridges)
+  - the full set of AgglayerBridge.claimAsset / claimMessage parameters per exit
+    (GET /claimer/v2/claim-params)
+
+It serves Transfer and Message exits, looked up by destination address or by the beneficiary decoded
+from their metadata through a configured message route (messageRoutes / --message-routes).
 
 Data sources:
   - exit-certificate-signed.json       (the certificate bridge exits)
@@ -50,6 +54,13 @@ archive in a GCS bucket: runSource in the config, or --run-source with --exit-ce
 			Usage: "With --exit-certificate-config: serve the run archived at this gs://<bucket>/<prefix> " +
 				"(downloaded into the exit_certificate archive cache) instead of the files of its output dir",
 			EnvVars: []string{"CLAIMER_RUN_SOURCE"},
+		},
+		&cli.StringFlag{
+			Name: "message-routes",
+			Usage: "Path to a JSON or TOML file with a messageRoutes list (how API v2 decodes the beneficiary " +
+				"of Message exits). Replaces the messageRoutes of --config; the way to set them with " +
+				"--exit-certificate-config",
+			EnvVars: []string{"CLAIMER_MESSAGE_ROUTES"},
 		},
 		&cli.StringFlag{
 			Name:  "address",

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	dbtypes "github.com/agglayer/aggkit/db/types"
+	"github.com/agglayer/aggkit/tools/exit_certificate/bridgesyncerlite"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -36,32 +37,45 @@ func (s stubReadTreer) GetLeaf(_ dbtypes.Querier, _ uint32, _ common.Hash) (comm
 	return common.Hash{}, nil
 }
 
-func TestLocalExitTreeDepositCount(t *testing.T) {
+func TestLocalExitTreeLeaves(t *testing.T) {
 	t.Parallel()
 
 	leaf := common.HexToHash("0xabc")
-	lt := &LocalExitTree{depositCount: map[common.Hash]uint32{leaf: 7}}
+	// Two leaves with the same hash keep their own position.
+	lt := &LocalExitTree{leaves: []localLeaf{{hash: leaf, metadata: []byte{0x01}}, {hash: leaf, metadata: []byte{0x02}}}}
+	require.Equal(t, uint32(2), lt.LeafCount())
 
-	dc, ok := lt.DepositCount(leaf)
-	require.True(t, ok)
-	require.Equal(t, uint32(7), dc)
+	for dc, wantMetadata := range [][]byte{{0x01}, {0x02}} {
+		h, ok := lt.LeafHash(uint32(dc))
+		require.True(t, ok)
+		require.Equal(t, leaf, h)
+		m, ok := lt.Metadata(uint32(dc))
+		require.True(t, ok)
+		require.Equal(t, wantMetadata, m)
+	}
 
-	_, ok = lt.DepositCount(common.HexToHash("0xdead"))
+	_, ok := lt.LeafHash(2)
+	require.False(t, ok)
+	_, ok = lt.Metadata(2)
 	require.False(t, ok)
 }
 
-func TestLocalExitTreeMetadata(t *testing.T) {
+func TestIndexLeaves(t *testing.T) {
 	t.Parallel()
 
-	leaf := common.HexToHash("0xabc")
-	lt := &LocalExitTree{metadata: map[common.Hash][]byte{leaf: {0x01, 0x02}}}
+	// Unordered input is indexed by deposit count.
+	leaves, err := indexLeaves([]bridgesyncerlite.BridgeLeaf{
+		{DepositCount: 1, Metadata: []byte{0x01}}, {DepositCount: 0, Metadata: []byte{0x00}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []byte{0x00}, leaves[0].metadata)
+	require.Equal(t, []byte{0x01}, leaves[1].metadata)
 
-	m, ok := lt.Metadata(leaf)
-	require.True(t, ok)
-	require.Equal(t, []byte{0x01, 0x02}, m)
+	_, err = indexLeaves([]bridgesyncerlite.BridgeLeaf{{DepositCount: 0}, {DepositCount: 2}})
+	require.ErrorContains(t, err, "out of range")
 
-	_, ok = lt.Metadata(common.HexToHash("0xdead"))
-	require.False(t, ok)
+	_, err = indexLeaves([]bridgesyncerlite.BridgeLeaf{{DepositCount: 0}, {DepositCount: 0}})
+	require.ErrorContains(t, err, "appears twice")
 }
 
 func TestLocalExitTreeProof(t *testing.T) {

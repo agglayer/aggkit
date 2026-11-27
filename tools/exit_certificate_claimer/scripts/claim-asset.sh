@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 #
-# claim-asset.sh — fetch the claimAsset parameters for a single bridge exit from the
-# exit_certificate_claimer service and submit AgglayerBridge.claimAsset on L1.
+# claim-asset.sh — fetch the claim parameters for a single bridge exit from the
+# exit_certificate_claimer service (API v2) and submit the claim on L1: AgglayerBridge.claimAsset
+# for a Transfer exit, AgglayerBridge.claimMessage for a Message exit. The method is the
+# claim_method the claimer returns; both take the same 11 arguments.
 #
 # Usage:
-#   ./claim-asset.sh <dest_address> <deposit_count>
+#   ./claim-asset.sh <address> <deposit_count>
+#
+# <address> is the destination address of the exit or, for a Message exit of a configured message
+# route, its beneficiary (the holder the destination contract pays).
 #
 # Environment:
 #   CLAIMER_URL     Base URL of the claimer service (default: http://localhost:8080)
 #   L1_RPC_URL      L1 RPC endpoint where AgglayerBridge lives (required to send)
 #   BRIDGE_ADDRESS  AgglayerBridge contract address on L1 (required to send)
 #   Signing (one of the following is required to send):
-#     PRIVATE_KEY            Raw hex signing key for the claimAsset transaction
+#     PRIVATE_KEY            Raw hex signing key for the claim transaction
 #     KEYSTORE               Path to an encrypted keystore JSON; unlocked with the password below
 #     KEYSTORE_PASSWORD      Password for KEYSTORE (read interactively if neither var is set)
 #     KEYSTORE_PASSWORD_FILE File containing the password for KEYSTORE
@@ -26,22 +31,22 @@
 set -euo pipefail
 
 CLAIMER_URL="${CLAIMER_URL:-http://localhost:8080}"
-API_BASE="${CLAIMER_URL%/}/claimer/v1"
+API_BASE="${CLAIMER_URL%/}/claimer/v2"
 DRY_RUN="${DRY_RUN:-0}"
 ASSUME_YES="${ASSUME_YES:-0}"
 
-# AgglayerBridge.claimAsset selector signature.
-CLAIM_ASSET_SIG="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
+# AgglayerBridge.claimAsset / claimMessage take the same arguments, in the same order.
+CLAIM_ARGS_SIG="(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
 
 usage() {
-	echo "Usage: $0 <dest_address> <deposit_count>" >&2
+	echo "Usage: $0 <address> <deposit_count>" >&2
 	echo "" >&2
 	echo "Environment variables:" >&2
 	echo "  CLAIMER_URL              base URL of the claimer service (default: http://localhost:8080)" >&2
 	echo "  L1_RPC_URL               L1 RPC endpoint where AgglayerBridge lives (required to submit)" >&2
 	echo "  BRIDGE_ADDRESS           AgglayerBridge contract address on L1 (required to submit)" >&2
 	echo "  Signing (one is required to submit):" >&2
-	echo "    PRIVATE_KEY            raw hex signing key for the claimAsset transaction" >&2
+	echo "    PRIVATE_KEY            raw hex signing key for the claim transaction" >&2
 	echo "    KEYSTORE               path to an encrypted keystore JSON (unlocked with the password below)" >&2
 	echo "    KEYSTORE_PASSWORD      password for KEYSTORE (read interactively if neither var is set)" >&2
 	echo "    KEYSTORE_PASSWORD_FILE file containing the password for KEYSTORE" >&2
@@ -73,7 +78,7 @@ fi
 # Fetch /claim-params for the selected deposit, capturing body and HTTP status.
 response="$(curl -sS -w $'\n%{http_code}' \
 	--get "${API_BASE}/claim-params" \
-	--data-urlencode "dest_address=${DEST_ADDRESS}" \
+	--data-urlencode "address=${DEST_ADDRESS}" \
 	--data-urlencode "deposit_count=${DEPOSIT_COUNT}")"
 http_code="${response##*$'\n'}"
 body="${response%$'\n'*}"
@@ -104,7 +109,7 @@ fi
 
 claim="$(echo "$body" | jq '.claims[0]')"
 
-# Extract every claimAsset argument. Fixed bytes32[32] arrays are rendered as "[0x..,0x..]".
+# Extract every claim argument. Fixed bytes32[32] arrays are rendered as "[0x..,0x..]".
 smt_local="$(echo "$claim" | jq -r '.smt_proof_local_exit_root | "[" + join(",") + "]"')"
 smt_rollup="$(echo "$claim" | jq -r '.smt_proof_rollup_exit_root | "[" + join(",") + "]"')"
 global_index="$(echo "$claim" | jq -r '.global_index')"
@@ -117,7 +122,19 @@ destination_address="$(echo "$claim" | jq -r '.destination_address')"
 amount="$(echo "$claim" | jq -r '.amount')"
 metadata="$(echo "$claim" | jq -r '.metadata')"
 
-echo "claimAsset parameters for deposit_count=${DEPOSIT_COUNT}:"
+# The claimer says which AgglayerBridge function claims this exit.
+claim_method="$(echo "$claim" | jq -r '.claim_method // empty')"
+case "$claim_method" in
+	claimAsset | claimMessage) ;;
+	*)
+		echo "error: unsupported claim_method '${claim_method}' (expected claimAsset or claimMessage)" >&2
+		exit 1
+		;;
+esac
+CLAIM_SIG="${claim_method}${CLAIM_ARGS_SIG}"
+
+echo "${claim_method} parameters for deposit_count=${DEPOSIT_COUNT}:"
+echo "  claim_method:        ${claim_method}"
 echo "  global_index:        ${global_index}"
 echo "  mainnet_exit_root:   ${mainnet_exit_root}"
 echo "  rollup_exit_root:    ${rollup_exit_root}"
@@ -134,7 +151,7 @@ echo
 
 # Assemble the cast send argument vector once; reused for the printed command and execution.
 cast_args=(
-	"$CLAIM_ASSET_SIG"
+	"$CLAIM_SIG"
 	"$smt_local"
 	"$smt_rollup"
 	"$global_index"
@@ -204,7 +221,7 @@ else
 fi
 
 if [ "$ASSUME_YES" != "1" ]; then
-	read -r -p "Submit claimAsset to ${BRIDGE_ADDRESS} via ${L1_RPC_URL}? [y/N] " reply
+	read -r -p "Submit ${claim_method} to ${BRIDGE_ADDRESS} via ${L1_RPC_URL}? [y/N] " reply
 	case "$reply" in
 		y | Y | yes | YES) ;;
 		*)
@@ -230,10 +247,10 @@ status=$(echo "$receipt" | jq -r '.status')
 # Receipt status is "0x1" on success and "0x0" when the transaction reverted.
 case "$status" in
 	0x1 | 1)
-		echo "claimAsset succeeded: $tx_hash"
+		echo "${claim_method} succeeded: $tx_hash"
 		;;
 	*)
-		echo "error: claimAsset transaction $tx_hash reverted (status=$status)" >&2
+		echo "error: ${claim_method} transaction $tx_hash reverted (status=$status)" >&2
 		exit 1
 		;;
 esac

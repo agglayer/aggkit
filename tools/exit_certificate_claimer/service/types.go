@@ -6,6 +6,7 @@ import (
 
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // leaf_type values as serialized in the signed exit certificate.
@@ -52,18 +53,73 @@ type ClaimAssetParams struct {
 	L1InfoTreeIndex uint32 `json:"l1_info_tree_index"`
 }
 
-// BridgesResponse is the body returned by GET /bridges.
-type BridgesResponse struct {
-	NetworkID          uint32           `json:"network_id"`
-	DestinationAddress string           `json:"destination_address"`
-	Bridges            []BridgeExitView `json:"bridges"`
+// Claim methods of AgglayerBridge, as returned by API v2 (claim_method).
+const (
+	ClaimMethodAsset   = "claimAsset"
+	ClaimMethodMessage = "claimMessage"
+)
+
+// claimMethod returns the AgglayerBridge function that claims a leaf of the given type.
+func claimMethod(leafType uint8) string {
+	if leafType == leafTypeMessage {
+		return ClaimMethodMessage
+	}
+	return ClaimMethodAsset
 }
 
-// ClaimParamsResponse is the body returned by GET /claim-params.
-type ClaimParamsResponse struct {
-	NetworkID          uint32             `json:"network_id"`
-	DestinationAddress string             `json:"destination_address"`
-	Claims             []ClaimAssetParams `json:"claims"`
+// BridgeExitViewV2 is a bridge exit as returned by API v2: the exit fields plus the metadata hash, the
+// claim method and, for a Message exit decoded through a configured message route, its beneficiary,
+// the amount it is paid and the token it is paid in.
+//
+// Metadata is the raw bridge metadata (for certificate exits and pending bridges alike) and MetadataHash
+// is its keccak256 hash.
+type BridgeExitViewV2 struct {
+	BridgeExitView
+	MetadataHash  string        `json:"metadata_hash"`
+	ClaimMethod   string        `json:"claim_method"`
+	Beneficiary   string        `json:"beneficiary,omitempty"`
+	DecodedAmount string        `json:"decoded_amount,omitempty"`
+	DisplayToken  *DisplayToken `json:"display_token,omitempty"`
+}
+
+// ClaimParamsV2 holds the claim arguments of one exit as returned by API v2: the claim arguments (claimAsset
+// and claimMessage take the same 11 arguments, in the same order) plus the keccak256 hash of the
+// metadata and the method to call.
+type ClaimParamsV2 struct {
+	ClaimAssetParams
+	MetadataHash string `json:"metadata_hash"`
+	ClaimMethod  string `json:"claim_method"`
+}
+
+// BridgesResponseV2 is the body returned by GET /claimer/v2/bridges.
+type BridgesResponseV2 struct {
+	APIVersion int                `json:"api_version"`
+	NetworkID  uint32             `json:"network_id"`
+	Address    string             `json:"address"`
+	Bridges    []BridgeExitViewV2 `json:"bridges"`
+}
+
+// ClaimParamsResponseV2 is the body returned by GET /claimer/v2/claim-params.
+type ClaimParamsResponseV2 struct {
+	APIVersion int             `json:"api_version"`
+	NetworkID  uint32          `json:"network_id"`
+	Address    string          `json:"address"`
+	Claims     []ClaimParamsV2 `json:"claims"`
+}
+
+// HealthResponseV2 is the body returned by GET /claimer/v2/health.
+type HealthResponseV2 struct {
+	APIVersion  int         `json:"api_version"`
+	Status      string      `json:"status"`
+	NetworkID   uint32      `json:"network_id"`
+	Version     VersionInfo `json:"version"`
+	APIVersions []int       `json:"api_versions"`
+}
+
+// errorResponseV2 is the JSON body API v2 returns on error.
+type errorResponseV2 struct {
+	APIVersion int    `json:"api_version"`
+	Error      string `json:"error"`
 }
 
 // VersionInfo mirrors aggkit.FullVersion as a JSON-friendly payload.
@@ -77,16 +133,20 @@ type VersionInfo struct {
 	Arch      string `json:"arch"`
 }
 
-// HealthResponse is the body returned by GET /health.
+// HealthResponse is the body returned by GET /claimer/v1/health, kept so existing probes keep working
+// after API v1 was removed.
 type HealthResponse struct {
 	Status    string      `json:"status"`
 	NetworkID uint32      `json:"network_id"`
 	Version   VersionInfo `json:"version"`
+	// APIVersions lists the API major versions this claimer serves (/claimer/v<N>/): only 2.
+	APIVersions []int `json:"api_versions"`
 }
 
-// errorResponse is the JSON body returned on error.
-type errorResponse struct {
-	Error string `json:"error"`
+// apiRemovedResponse is the 410 Gone body of every removed /claimer/v1 endpoint.
+type apiRemovedResponse struct {
+	Error       string `json:"error"`
+	APIVersions []int  `json:"api_versions"`
 }
 
 // proofToHex converts a tree.Proof (32 sibling hashes) into its hex-string representation.
@@ -109,6 +169,12 @@ func bigToString(v *big.Int) string {
 // addrHex renders an address as a checksummed 0x string.
 func addrHex(a common.Address) string {
 	return a.Hex()
+}
+
+// metadataHashHex renders the keccak256 hash of a raw metadata blob as a 0x-prefixed hex string. It is
+// the metadata slot of the exit-tree leaf (and what a certificate carries as the exit's metadata).
+func metadataHashHex(rawMetadata []byte) string {
+	return crypto.Keccak256Hash(rawMetadata).Hex()
 }
 
 // metadataHex renders a metadata byte blob as a 0x-prefixed hex string ("0x" for empty).

@@ -43,7 +43,7 @@ type signedCertificate struct {
 }
 
 // Certificate is the parsed, validated view of the signed exit certificate. Each bridge exit is
-// normalized into a leaf so it can be matched against the local exit tree by leaf hash.
+// normalized into a leaf so it can be cross-checked against the local exit tree leaf at its position.
 type Certificate struct {
 	NetworkID        uint32
 	NewLocalExitRoot common.Hash
@@ -102,20 +102,6 @@ func (l CertificateLeaf) Hash() common.Hash {
 		amount.FillBytes(buf[:]),
 		metaHash,
 	)
-}
-
-// view converts a leaf into its public representation, enriched with the resolved deposit count.
-func (l CertificateLeaf) view(depositCount uint32) BridgeExitView {
-	return BridgeExitView{
-		LeafType:           l.LeafType,
-		OriginNetwork:      l.OriginNetwork,
-		OriginTokenAddress: addrHex(l.OriginTokenAddress),
-		DestinationNetwork: l.DestinationNetwork,
-		DestinationAddress: addrHex(l.DestinationAddress),
-		Amount:             bigToString(l.Amount),
-		Metadata:           metadataHex(l.MetadataHash),
-		DepositCount:       depositCount,
-	}
 }
 
 // LoadCertificate reads and parses the signed exit certificate from disk.
