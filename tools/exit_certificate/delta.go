@@ -127,8 +127,9 @@ func loadPreviousRun(dir string) (*previousRun, error) {
 	}, nil
 }
 
-// LoadDeltaExits reads and validates the delta exits file. Only asset (transfer) exits are accepted,
-// with a positive amount and a token_info; message exits are not supported.
+// LoadDeltaExits reads and validates the delta exits file. Transfer exits need a positive amount; Message exits
+// (bridgeMessage, e.g. from version-1 recoveries) carry their own metadata and may carry ETH (their amount,
+// charged to L1 ETH), and come from the L2.
 func LoadDeltaExits(path string, l2NetworkID uint32) ([]*agglayertypes.BridgeExit, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -153,10 +154,11 @@ func LoadDeltaExits(path string, l2NetworkID uint32) ([]*agglayertypes.BridgeExi
 		return nil, fmt.Errorf("parse delta exits file %s: %w", path, err)
 	}
 	for i, be := range file.BridgeExits {
-		if err := validateDeltaExit(be, l2NetworkID); err != nil {
+		// The raw metadata first: a malformed value reaches validateDeltaExit as empty bytes.
+		if err := validateDeltaRawMetadata(rawFile.BridgeExits[i].Metadata); err != nil {
 			return nil, fmt.Errorf("delta exit %d: %w", i, err)
 		}
-		if err := validateDeltaRawMetadata(rawFile.BridgeExits[i].Metadata); err != nil {
+		if err := validateDeltaExit(be, l2NetworkID); err != nil {
 			return nil, fmt.Errorf("delta exit %d: %w", i, err)
 		}
 	}
@@ -201,14 +203,42 @@ func validateDeltaExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
 	if err := be.Validate(); err != nil {
 		return err
 	}
-	if be.LeafType != bridgetypes.LeafTypeAsset {
-		return fmt.Errorf("leaf_type %s is not supported (only Transfer exits)", be.LeafType)
-	}
-	if be.Amount == nil || be.Amount.Sign() <= 0 {
-		return errors.New("amount must be positive")
+	switch be.LeafType {
+	case bridgetypes.LeafTypeAsset:
+		if be.Amount == nil || be.Amount.Sign() <= 0 {
+			return errors.New("amount must be positive")
+		}
+	case bridgetypes.LeafTypeMessage:
+		if err := validateDeltaMessageExit(be, l2NetworkID); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("leaf_type %d is not supported", be.LeafType.Uint8())
 	}
 	if be.DestinationNetwork == l2NetworkID {
 		return fmt.Errorf("dest_network %d is the exiting network itself", be.DestinationNetwork)
+	}
+	return nil
+}
+
+// validateDeltaMessageExit checks what only applies to a Message (bridgeMessage) exit. Its token_info is not a
+// token but the sender — the bridge sets it to its own network and msg.sender, so anything else is not a leaf
+// the L2 bridge could have emitted. It may carry ETH (bridgeMessage is payable): the agglayer charges its amount
+// to L1 ETH, and so do Step F (amountTokenKey) and the recoveries step. Its metadata is the message itself:
+// mandatory, never derived.
+func validateDeltaMessageExit(be *agglayertypes.BridgeExit, l2NetworkID uint32) error {
+	if be.Amount == nil || be.Amount.Sign() < 0 {
+		return fmt.Errorf("a Message exit needs a non-negative amount (the ETH it carries), got %v", be.Amount)
+	}
+	if len(be.Metadata) == 0 {
+		return errors.New("a Message exit needs a non-empty metadata (the message itself): it is never derived")
+	}
+	if be.TokenInfo.OriginNetwork != l2NetworkID {
+		return fmt.Errorf("a Message's token_info.origin_network must be the exiting network %d (the sender's "+
+			"network), got %d", l2NetworkID, be.TokenInfo.OriginNetwork)
+	}
+	if be.TokenInfo.OriginTokenAddress == (common.Address{}) {
+		return errors.New("a Message's token_info.origin_token_address is its sender: it cannot be the zero address")
 	}
 	return nil
 }
@@ -329,7 +359,7 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 		return runDelta(ctx, cfg)
 	}
 	if step == stepRecoveries { // standalone: it only prepares the delta exits file and the balance state
-		return runRecoveries(cfg)
+		return runRecoveries(ctx, cfg)
 	}
 	steps, err := deltaStepList(step)
 	if err != nil {
@@ -599,12 +629,24 @@ func RunStepG2Delta(
 	if err != nil {
 		return nil, err
 	}
-	if err := rejectDuplicateLeaves(existing, leaves); err != nil {
+	if err := rejectDuplicateLeaves(leaves); err != nil {
 		return nil, err
 	}
+	if err := verifyRecoveryDepositCounts(cfg, prev, firstDepositCount, leaves); err != nil {
+		return nil, err
+	}
+	warnLeavesAlreadyInTree(existing, leaves)
 	newLER, err := syncer.AppendBridges(ctx, leaves)
 	if err != nil {
 		return nil, fmt.Errorf("append delta leaves to the exit tree: %w", err)
+	}
+	// The leaves were checked at the deposit counts liteLeavesFromExits gave them: the tree must have assigned
+	// exactly those (the recoveries ledger and the claimer rely on them).
+	if next, err := syncer.NextDepositCount(ctx); err != nil {
+		return nil, err
+	} else if want := uint64(firstDepositCount) + uint64(len(leaves)); uint64(next) != want {
+		return nil, fmt.Errorf("the exit tree assigned deposit counts up to %d after appending the delta, expected %d",
+			int64(next)-1, want-1)
 	}
 
 	for i, be := range certificate.BridgeExits {
@@ -625,34 +667,55 @@ func RunStepG2Delta(
 	return result, nil
 }
 
-// rejectDuplicateLeaves fails when a new leaf has the same hash (token, destination, amount and metadata)
-// as a leaf already in the tree — an exit of a previous run or any older L2 bridge — or as another new
-// leaf. Both would be distinct tree leaves with the same hash, and the claimer indexes leaves by hash: the
-// later one overwrites the earlier deposit count, so the earlier exit could no longer be claimed.
-func rejectDuplicateLeaves(existing, leaves []bridgesyncerlite.BridgeLeaf) error {
-	seen := make(map[common.Hash]string, len(existing)+len(leaves))
-	for i := range existing {
-		seen[existing[i].Hash()] = fmt.Sprintf("the leaf already in the exit tree at deposit count %d "+
-			"(an exit of a previous run or an older L2 bridge, already settled: it cannot be merged)",
-			existing[i].DepositCount)
-	}
+// rejectDuplicateLeaves fails when two new leaves have the same hash (token or sender, destination, amount and
+// metadata): two identical exits in one delta have no reason to exist — identical Transfers are merged into
+// one — and the recoveries ledger could not tell which case each belongs to.
+//
+// A new leaf identical to one already in the tree (an exit of a previous run or an older L2 bridge) is
+// allowed: they are distinct leaves, each with its own deposit count and global index, and the claimer matches
+// certificate exits to leaves by position (see warnLeavesAlreadyInTree).
+func rejectDuplicateLeaves(leaves []bridgesyncerlite.BridgeLeaf) error {
+	seen := make(map[common.Hash]int, len(leaves))
 	for i := range leaves {
 		h := leaves[i].Hash()
 		if other, dup := seen[h]; dup {
-			return fmt.Errorf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to %s: identical leaves "+
-				"share a hash and the claimer could not tell them apart — merge delta exits that are identical "+
-				"into one (sum the amounts), or change the amount so the leaf differs from a settled one (e.g. "+
-				"split it in two different amounts)",
+			return fmt.Errorf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to delta exit %d in this "+
+				"run: identical leaves share a hash — merge delta exits that are identical into one (sum the "+
+				"amounts), or make them differ",
 				i, leaves[i].OriginNetwork, leaves[i].OriginAddress.Hex(), leaves[i].DestinationAddress.Hex(),
 				leaves[i].Amount, other)
 		}
-		seen[h] = fmt.Sprintf("delta exit %d in this run", i)
+		seen[h] = i
 	}
 	return nil
 }
 
+// warnLeavesAlreadyInTree logs the new leaves whose hash equals a leaf already in the exit tree (an exit of a
+// previous run or an older L2 bridge). It is allowed — the new leaf gets its own deposit count — but worth a
+// look: it needs a claimer that matches exits to leaves by position, since one that indexes leaves by hash
+// would serve only one of the two.
+func warnLeavesAlreadyInTree(existing, leaves []bridgesyncerlite.BridgeLeaf) {
+	if len(existing) == 0 {
+		return
+	}
+	inTree := make(map[common.Hash]uint32, len(existing))
+	for i := range existing {
+		inTree[existing[i].Hash()] = existing[i].DepositCount
+	}
+	for i := range leaves {
+		if dc, dup := inTree[leaves[i].Hash()]; dup {
+			log.Warnf("delta exit %d (origin %d/%s, dest %s, amount %s) is identical to the leaf already in the "+
+				"exit tree at deposit count %d: it is appended as a new leaf with deposit count %d (both are "+
+				"claimable separately by a claimer that matches exits to leaves by position)",
+				i, leaves[i].OriginNetwork, leaves[i].OriginAddress.Hex(), leaves[i].DestinationAddress.Hex(),
+				leaves[i].Amount, dc, leaves[i].DepositCount)
+		}
+	}
+}
+
 // deltaRawMetadata returns each exit's raw leaf metadata, aligned by index: the metadata the delta file
-// carries, or — for the exits without it — the one the L2 bridge would embed (generateMetadata).
+// carries, or — for the Transfer exits without it — the one the L2 bridge would embed (generateMetadata). A
+// Message's metadata is the message itself: it is used as given and never derived (LoadDeltaExits requires it).
 func deltaRawMetadata(
 	ctx context.Context, cfg *Config, exits []*agglayertypes.BridgeExit,
 ) ([][]byte, error) {
@@ -660,7 +723,7 @@ func deltaRawMetadata(
 	var missing []int
 	missingExits := make([]*agglayertypes.BridgeExit, 0, len(exits))
 	for i, be := range exits {
-		if len(be.Metadata) > 0 {
+		if len(be.Metadata) > 0 || be.LeafType == bridgetypes.LeafTypeMessage {
 			raw[i] = be.Metadata
 			continue
 		}

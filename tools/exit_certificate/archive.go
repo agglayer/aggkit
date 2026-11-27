@@ -105,7 +105,8 @@ func selectPreviousRunFiles(m *runarchive.Manifest) ([]string, error) {
 		}
 	}
 	files := required
-	for _, f := range []string{fileDeltaManifest, fileStep0LBT, fileStepCSCLockedValues, fileStepFChecks} {
+	optional := []string{fileDeltaManifest, fileStep0LBT, fileStep0TargetBlock, fileStepCSCLockedValues, fileStepFChecks}
+	for _, f := range optional {
 		if _, ok := m.File(f); ok {
 			files = append(files, f)
 		}
