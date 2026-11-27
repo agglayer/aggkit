@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# Regenerates the creation bytecode (*.bin) and the flattened sources of the Circle USDC (USDC.e,
-# usdc-lxly) contracts used by the e2e, from pinned upstream commits. See README.md.
+# Rebuilds the creation bytecode (*.bin) of the Circle USDC (USDC.e, usdc-lxly), Safe and recovery-package
+# contracts used by the e2e and checks it against the committed .bin files. See README.md.
 #
-# Usage: ./build.sh
+# The Solidity sources are not vendored in this repository (licensing): build.sh fetches them from their
+# upstream repositories at pinned commits into a temp dir and compiles them there. The two recovery-package
+# contracts (ZkMinterBurnerPayout, UsdcRecoveryBurn) have no public repository to pin: they come from the
+# Circle USDC recovery package, which must be given with --package (their sha256 are pinned below);
+# without it they are skipped.
 #
-# Needs git, forge (Foundry; the sha256 listed in README.md were produced with forge 1.5.1), jq and
-# sha256sum, plus network access to GitHub and to the solc binaries forge downloads. Nothing from the
-# upstream repositories is executed: their Solidity sources are copied into Foundry projects created
-# here, and only `forge build` / `forge flatten` run on them. Idempotent: running it again rewrites
-# the same files.
+# Usage: ./build.sh [--package <dir>] [--write]
+#   --package <dir>  a directory holding the package's ZkMinterBurnerPayout.sol and UsdcRecoveryBurn.sol
+#                    (e.g. its contracts/src/), checked against the pinned sha256.
+#   --write          overwrite the committed .bin files with the build output instead of only comparing.
+#
+# Needs git, forge (Foundry; the committed .bin were produced with forge 1.5.1 — another version may change
+# the metadata hash of the third-party bins), jq and sha256sum, plus network access to GitHub and to the solc
+# binaries forge downloads. Nothing from the upstream repositories is executed: their Solidity sources are
+# copied into Foundry projects created here, and only `forge build` runs on them. Exits non-zero when a
+# rebuilt .bin differs from the committed one (without --write).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,6 +37,20 @@ ZKEVM_REPO="https://github.com/0xPolygonHermez/zkevm-contracts"
 ZKEVM_LXLY_COMMIT="b737362078215bfcb3973f9e8a4183f711c8738a" # usdc-lxly lib/zkevm-contracts
 SAFE_REPO="https://github.com/safe-global/safe-smart-account"
 SAFE_COMMIT="186a21a74b327f17fc41217a927dea7064f74604" # tag v1.3.0
+# Recovery package (agglayer/protocol-team-kanban#819, v2; no public repository): contracts/src/ sources.
+PACKAGE_PAYOUT_SHA256="ed2e8d373cf414adaf75bc5bba00befc88182f91de61f96d82d3c37fe8aaf40b" # ZkMinterBurnerPayout.sol
+PACKAGE_BURN_SHA256="2918cd7f869a345fd5389905cc5a0d4f08e64e9be432c0752052e640687fd17a"   # UsdcRecoveryBurn.sol
+
+PACKAGE_DIR=""
+WRITE=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --package) [[ $# -ge 2 ]] || { log_error "--package needs a directory"; exit 1; }; PACKAGE_DIR="$2"; shift 2 ;;
+        --write) WRITE=1; shift ;;
+        -h | --help) sed -n '2,24p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        *) log_error "unknown argument: $1"; exit 1 ;;
+    esac
+done
 
 for bin in git forge jq sha256sum; do
     command -v "${bin}" >/dev/null 2>&1 || {
@@ -142,11 +165,27 @@ evm_version = "istanbul"
 optimizer = false
 EOF
 
-# Recovery package contracts: the unmodified sources of this directory, with the package's
-# contracts/foundry.toml.
+# Recovery package contracts: the unmodified sources given with --package (sha256 checked), with the
+# package's contracts/foundry.toml.
 PK="${WORK}/proj-package"
-mkdir -p "${PK}/src"
-cp "${HERE}/ZkMinterBurnerPayout.sol" "${HERE}/UsdcRecoveryBurn.sol" "${PK}/src/"
+PROJECTS=("${FT}" "${LX}" "${SF}")
+if [[ -n "${PACKAGE_DIR}" ]]; then
+    mkdir -p "${PK}/src"
+    for pair in "ZkMinterBurnerPayout.sol ${PACKAGE_PAYOUT_SHA256}" "UsdcRecoveryBurn.sol ${PACKAGE_BURN_SHA256}"; do
+        read -r file sum <<<"${pair}"
+        src="$(find "${PACKAGE_DIR}" -type f -name "${file}" | head -n 1)"
+        [[ -n "${src}" ]] || { log_error "--package ${PACKAGE_DIR}: ${file} not found"; exit 1; }
+        [[ "$(sha256sum <"${src}" | cut -d' ' -f1)" == "${sum}" ]] || {
+            log_error "${src}: sha256 differs from the pinned ${sum} (not the package's source)"
+            exit 1
+        }
+        cp "${src}" "${PK}/src/${file}"
+    done
+    PROJECTS+=("${PK}")
+else
+    log_warn "No --package: ZkMinterBurnerPayout.bin and UsdcRecoveryBurn.bin are not rebuilt (no public source to fetch)"
+fi
+mkdir -p "${PK}"
 cat >"${PK}/foundry.toml" <<'EOF'
 [profile.default]
 src = "src"
@@ -159,15 +198,16 @@ bytecode_hash = "none"
 cbor_metadata = false
 EOF
 
-for p in "${FT}" "${LX}" "${SF}" "${PK}"; do
+for p in "${PROJECTS[@]}"; do
     log_info "forge build ${p##*/}"
     run_quiet forge build --root "${p}"
 done
 
 # --- Outputs -----------------------------------------------------------------------------------
-# write_bin <project> <source path in project> <contract>: <contract>.bin = creation bytecode, plain
-# hex, no 0x, no trailing newline.
-write_bin() {
+MISMATCH=0
+# check_bin <project> <source path in project> <contract>: compares the creation bytecode (plain hex, no 0x,
+# no trailing newline) with the committed <contract>.bin, or writes it there with --write.
+check_bin() {
     local proj="$1" src="$2" name="$3" art code
     art="${proj}/out/$(basename "${src}")/${name}.json"
     code="$(jq -r '.bytecode.object' "${art}")"
@@ -176,56 +216,42 @@ write_bin() {
         log_error "${name}: bytecode is not plain hex (unlinked library?)"
         exit 1
     fi
-    printf '%s' "${code}" >"${HERE}/${name}.bin"
+    if [[ "${WRITE}" -eq 1 ]]; then
+        printf '%s' "${code}" >"${HERE}/${name}.bin"
+        log_info "wrote ${name}.bin"
+    elif [[ "$(printf '%s' "${code}" | sha256sum)" == "$(sha256sum <"${HERE}/${name}.bin")" ]]; then
+        log_info "✅ ${name}.bin matches the build"
+    else
+        log_error "❌ ${name}.bin differs from the build (another forge/solc version changes the metadata hash)"
+        MISMATCH=$((MISMATCH + 1))
+    fi
 }
 
-# write_flat <project> <source path in project> <contract> <repo> <commit> <ref> <upstream path>
-#            <licence> <compiler>: <contract>.sol = header + `forge flatten` output (code unedited).
-write_flat() {
-    local proj="$1" src="$2" name="$3" repo="$4" commit="$5" ref="$6" upath="$7" lic="$8" cc="$9"
-    {
-        echo "// Flattened by build.sh with \`forge flatten\`; the code below is not edited."
-        echo "//   Upstream:  ${repo}"
-        echo "//   Commit:    ${commit} (${ref})"
-        echo "//   Path:      ${upath}"
-        echo "//   Licence:   ${lic}"
-        echo "//   Compiler:  ${cc}"
-        echo "// ${name}.bin is compiled from the upstream source tree (see build.sh), not from this file."
-        echo
-        forge flatten --root "${proj}" "${proj}/${src}"
-    } >"${HERE}/${name}.sol"
-}
-
-FT_LIC="MIT (stablecoin-evm v2.1.0 LICENSE, CENTRE SECZ; OpenZeppelin Contracts 3.1.0)"
-FT_CC="solc 0.6.12, optimizer enabled, 200 runs, evm istanbul"
-LX_LIC="MIT (usdc-lxly SPDX headers; the repository has no LICENSE file; OpenZeppelin 4.9.2)"
-LX_LIC_ZK="${LX_LIC}; AGPL-3.0 for the zkevm-contracts interfaces IBridgeMessageReceiver and IPolygonZkEVMBridge (${ZKEVM_LXLY_COMMIT})"
-LX_CC="solc 0.8.17, optimizer enabled, 200 runs, evm london"
-SF_LIC="LGPL-3.0-only"
-SF_CC="solc 0.7.6, optimizer disabled, evm istanbul"
-
-# name|project|source in project|upstream repo|commit|ref|upstream path|licence|compiler
+# name|project|source in project (upstream path: see README.md)
 TARGETS=(
-    "FiatTokenV2_1|${FT}|src/v2/FiatTokenV2_1.sol|${STABLECOIN_REPO}|${STABLECOIN_COMMIT}|tag v2.1.0|contracts/v2/FiatTokenV2_1.sol|${FT_LIC}|${FT_CC}"
-    "FiatTokenProxy|${FT}|src/v1/FiatTokenProxy.sol|${STABLECOIN_REPO}|${STABLECOIN_COMMIT}|tag v2.1.0|contracts/v1/FiatTokenProxy.sol|${FT_LIC}|${FT_CC}"
-    "L1Escrow|${LX}|src/L1Escrow.sol|${USDC_LXLY_REPO}|${USDC_LXLY_COMMIT}|main|src/L1Escrow.sol|${LX_LIC_ZK}|${LX_CC}"
-    "L1EscrowProxy|${LX}|src/L1EscrowProxy.sol|${USDC_LXLY_REPO}|${USDC_LXLY_COMMIT}|main|src/L1EscrowProxy.sol|${LX_LIC}|${LX_CC}"
-    "ZkMinterBurner|${LX}|src/ZkMinterBurner.sol|${USDC_LXLY_REPO}|${USDC_LXLY_COMMIT}|main|src/ZkMinterBurner.sol|${LX_LIC_ZK}|${LX_CC}"
-    "ZkMinterBurnerProxy|${LX}|src/ZkMinterBurnerProxy.sol|${USDC_LXLY_REPO}|${USDC_LXLY_COMMIT}|main|src/ZkMinterBurnerProxy.sol|${LX_LIC}|${LX_CC}"
-    "NativeConverter|${LX}|src/NativeConverter.sol|${USDC_LXLY_REPO}|${USDC_LXLY_COMMIT}|main|src/NativeConverter.sol|${LX_LIC_ZK}|${LX_CC}"
-    "NativeConverterProxy|${LX}|src/NativeConverterProxy.sol|${USDC_LXLY_REPO}|${USDC_LXLY_COMMIT}|main|src/NativeConverterProxy.sol|${LX_LIC}|${LX_CC}"
-    "GnosisSafeL2|${SF}|contracts/GnosisSafeL2.sol|${SAFE_REPO}|${SAFE_COMMIT}|tag v1.3.0|contracts/GnosisSafeL2.sol|${SF_LIC}|${SF_CC}"
-    "GnosisSafeProxyFactory|${SF}|contracts/proxies/GnosisSafeProxyFactory.sol|${SAFE_REPO}|${SAFE_COMMIT}|tag v1.3.0|contracts/proxies/GnosisSafeProxyFactory.sol|${SF_LIC}|${SF_CC}"
-    "MultiSendCallOnly|${SF}|contracts/libraries/MultiSendCallOnly.sol|${SAFE_REPO}|${SAFE_COMMIT}|tag v1.3.0|contracts/libraries/MultiSendCallOnly.sol|${SF_LIC}|${SF_CC}"
+    "FiatTokenV2_1|${FT}|src/v2/FiatTokenV2_1.sol"
+    "FiatTokenProxy|${FT}|src/v1/FiatTokenProxy.sol"
+    "L1Escrow|${LX}|src/L1Escrow.sol"
+    "L1EscrowProxy|${LX}|src/L1EscrowProxy.sol"
+    "ZkMinterBurner|${LX}|src/ZkMinterBurner.sol"
+    "ZkMinterBurnerProxy|${LX}|src/ZkMinterBurnerProxy.sol"
+    "NativeConverter|${LX}|src/NativeConverter.sol"
+    "NativeConverterProxy|${LX}|src/NativeConverterProxy.sol"
+    "GnosisSafeL2|${SF}|contracts/GnosisSafeL2.sol"
+    "GnosisSafeProxyFactory|${SF}|contracts/proxies/GnosisSafeProxyFactory.sol"
+    "MultiSendCallOnly|${SF}|contracts/libraries/MultiSendCallOnly.sol"
 )
+if [[ -n "${PACKAGE_DIR}" ]]; then
+    TARGETS+=("ZkMinterBurnerPayout|${PK}|src/ZkMinterBurnerPayout.sol" "UsdcRecoveryBurn|${PK}|src/UsdcRecoveryBurn.sol")
+fi
 for t in "${TARGETS[@]}"; do
-    IFS='|' read -r name proj src repo commit ref upath lic cc <<<"${t}"
-    write_bin "${proj}" "${src}" "${name}"
-    write_flat "${proj}" "${src}" "${name}" "${repo}" "${commit}" "${ref}" "${upath}" "${lic}" "${cc}"
+    IFS='|' read -r name proj src <<<"${t}"
+    check_bin "${proj}" "${src}" "${name}"
 done
-# The package contracts keep their own (unmodified) sources: only the bins are written.
-write_bin "${PK}" "src/ZkMinterBurnerPayout.sol" "ZkMinterBurnerPayout"
-write_bin "${PK}" "src/UsdcRecoveryBurn.sol" "UsdcRecoveryBurn"
 
 log_info "sha256 of the bins:"
 (cd "${HERE}" && sha256sum ./*.bin)
+if [[ "${MISMATCH}" -ne 0 ]]; then
+    log_error "${MISMATCH} .bin file(s) differ from the build (rerun with --write to update them)"
+    exit 1
+fi

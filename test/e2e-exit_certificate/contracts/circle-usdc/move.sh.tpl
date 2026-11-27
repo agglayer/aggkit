@@ -11,7 +11,7 @@
 # What it does on the halted L2:
 #   1. Safe owner EXECUTOR deploys the payout list (data contracts: holder ‖ amount entries), the new
 #      ZkMinterBurner implementation ZkMinterBurnerPayout and the temporary USDC.e implementation
-#      UsdcRecoveryBurn (sources: ZkMinterBurnerPayout.sol, UsdcRecoveryBurn.sol).
+#      UsdcRecoveryBurn (the recovery package's ZkMinterBurnerPayout.sol and UsdcRecoveryBurn.sol, compiled).
 #   2. The Safe (owner and admin of ZkMinterBurner; proxy admin, owner and masterMinter of USDC.e)
 #      executes ONE Safe transaction, a MultiSendCallOnly batch of:
 #        a. USDC.e.upgradeTo(UsdcRecoveryBurn)

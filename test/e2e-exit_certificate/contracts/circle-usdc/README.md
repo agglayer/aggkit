@@ -2,8 +2,12 @@
 
 Creation bytecode (`*.bin`: plain hex, no `0x`, no trailing newline) of the contracts behind Circle's
 USDC.e on Polygon zkEVM and of the zkEVM-sunset recovery package (agglayer/issues#298), so the e2e deploys
-them with `cast send --create` and needs no compiler or download at run time. `build.sh` regenerates every
-`.bin` and flattened source from the pinned upstream commits.
+them with `cast send --create` and needs no compiler or download at run time.
+
+**The Solidity sources are not vendored here, for licensing reasons** (LGPL-3.0, AGPL-3.0 and MIT code from several
+upstreams): this directory only holds the `.bin` files, `move.sh.tpl`, `build.sh` and this README. The table below
+gives the origin of each `.bin`; `build.sh` fetches the sources from those repositories at the pinned commits into a
+temp dir, compiles them there and checks the result against the committed `.bin` (see "Regenerating").
 
 ## Contracts
 
@@ -20,14 +24,12 @@ them with `cast send --create` and needs no compiler or download at run time. `b
 | `GnosisSafeL2` | [safe-global/safe-smart-account](https://github.com/safe-global/safe-smart-account) `186a21a7` (tag v1.3.0) `contracts/GnosisSafeL2.sol` | LGPL-3.0-only | solc 0.7.6, optimizer disabled, istanbul | `c7d54ce3fb8d63cbdd46173ed5eb95db147e6f98bdc5e62d267b44e2e3965712` |
 | `GnosisSafeProxyFactory` | same, `contracts/proxies/GnosisSafeProxyFactory.sol` | LGPL-3.0-only | same | `741d5daa0701dadcca475b4236a47b743bc75bbe6ee81c8630e47d3f47769c85` |
 | `MultiSendCallOnly` | same, `contracts/libraries/MultiSendCallOnly.sol` | LGPL-3.0-only | same | `2adccc150d1b624b13d2b3a28f6763778bd5930aa398b35a16c748922e22e589` |
-| `ZkMinterBurnerPayout` | recovery package (agglayer/protocol-team-kanban#819, v2), `contracts/src/ZkMinterBurnerPayout.sol` | AGPL-3.0 | solc 0.8.28, optimizer 200, shanghai, no metadata | `bc2022a8ee4e83bee7989cac1bc0dce6e6d2a6107590e81bc7cb6dc2039d483b` |
-| `UsdcRecoveryBurn` | recovery package, `contracts/src/UsdcRecoveryBurn.sol` | AGPL-3.0 | same | `2d118dc865d25f5f265c0b66e9ecfc1bac15245507a5b76fda23c350e15a5cc3` |
+| `ZkMinterBurnerPayout` | recovery package (agglayer/protocol-team-kanban#819, v2), `contracts/src/ZkMinterBurnerPayout.sol`; **no public repository** (source sha256 `ed2e8d37…f40b`, pinned in `build.sh`) | AGPL-3.0 | solc 0.8.28, optimizer 200, shanghai, no metadata | `bc2022a8ee4e83bee7989cac1bc0dce6e6d2a6107590e81bc7cb6dc2039d483b` |
+| `UsdcRecoveryBurn` | recovery package, `contracts/src/UsdcRecoveryBurn.sol`; **no public repository** (source sha256 `2918cd7f…d17a`, pinned in `build.sh`) | AGPL-3.0 | same | `2d118dc865d25f5f265c0b66e9ecfc1bac15245507a5b76fda23c350e15a5cc3` |
 
 usdc-lxly submodules: OpenZeppelin Contracts `e50c24f5` and Contracts Upgradeable `bc95521e` (both v4.9.2),
-0xPolygonHermez/zkevm-contracts `b7373620`. The third-party `.sol` files here are `forge flatten` output
-(code not edited) with a header naming the upstream; the `.bin` files are compiled from the upstream trees,
-and compiling a flattened file gives the same bytecode except the metadata hash. The two package contracts
-are the unmodified sources. Every runtime is under the 24,576-byte limit (largest: `GnosisSafeL2`, 23,800)
+0xPolygonHermez/zkevm-contracts `b7373620` (`build.sh` checks that usdc-lxly pins them). The `.bin` files are
+compiled from the upstream source trees as `build.sh` lays them out. Every runtime is under the 24,576-byte limit (largest: `GnosisSafeL2`, 23,800)
 and every init code under 49,152 bytes (largest: `GnosisSafeL2`, 23,841).
 
 Versions and settings are the ones of the zkEVM mainnet deployment, not the upstream defaults: zkEVM USDC.e
@@ -188,13 +190,21 @@ chunk_initcodes() {
 ## Regenerating
 
 ```bash
-./build.sh   # clones the pinned commits into a temp dir, forge build/flatten, prints the sha256 of each .bin
+./build.sh                          # fetch the pinned commits into a temp dir, forge build, compare with the .bin
+./build.sh --package <dir>          # also rebuild the two recovery-package contracts from their sources
+./build.sh --package <dir> --write  # overwrite the .bin files with the build output
 ```
 
-It needs git, forge, jq, sha256sum and network access. The sha256 above were produced with forge 1.5.1; another
-forge version may change the metadata hash in the third-party bins (the package bins have no metadata).
-Only Solidity sources are copied from the upstreams into Foundry projects that `build.sh` writes; no upstream
-script, package manager or Makefile runs.
+It needs git, forge, jq, sha256sum and network access. It exits non-zero when a rebuilt `.bin` differs from the
+committed one. The committed `.bin` were produced with forge 1.5.1 (all 13 checked on 2026-11-27); another forge
+version may change the metadata hash in the third-party bins (the package bins have no metadata). Only Solidity
+sources are copied from the upstreams into Foundry projects that `build.sh` writes; no upstream script, package
+manager or Makefile runs.
+
+The two recovery-package contracts (`ZkMinterBurnerPayout`, `UsdcRecoveryBurn`) have no public repository to pin:
+they come from the Circle USDC recovery package attached to agglayer/protocol-team-kanban#819 (v2). `--package`
+takes a directory holding its `ZkMinterBurnerPayout.sol` and `UsdcRecoveryBurn.sol` (e.g. its `contracts/src/`) and
+refuses files whose sha256 differs from the one pinned in `build.sh`; without it, those two `.bin` are not rebuilt.
 
 ## Mainnet comparison (2026-11-25)
 
