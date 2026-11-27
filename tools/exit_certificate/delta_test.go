@@ -638,6 +638,30 @@ func TestRunDeltaStepsRejectsL2ScanSteps(t *testing.T) {
 	require.Error(t, runDeltaSteps(context.Background(), &Config{}, "nonsense"))
 }
 
+func TestDeltaStepList(t *testing.T) {
+	t.Parallel()
+	for step, want := range map[string][]string{
+		"sign":          {"sign"},
+		"submit-":       {"submit", "wait", "upload"},
+		"submit-upload": {"submit", "wait", "upload"},
+		"wait-":         {"wait", "upload"},
+		"sign-upload":   {"sign", "submit", "wait", "upload"},
+		"sign, submit":  {"sign", "submit"},
+		"upload":        {"upload"},
+	} {
+		got, err := deltaStepList(step)
+		require.NoError(t, err, step)
+		require.Equal(t, want, got, step)
+	}
+	// A range reaching an L2 scan step is refused before anything runs.
+	for _, step := range []string{"i-", "f-upload", "h-sign", "sign, pending_claims"} {
+		_, err := deltaStepList(step)
+		require.ErrorContains(t, err, "not available with options.deltaMode", step)
+	}
+	_, err := deltaStepList("nope-")
+	require.ErrorContains(t, err, "unknown step")
+}
+
 func TestRunDeltaRejectsSameOutputAndPreviousDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -229,6 +229,9 @@ This produces and signs the certificate but **does not submit it**. SUBMIT and W
 
 # Wait for it to settle (on the agglayer and on L1)
 ./target/exit_certificate --config parameters.json --step wait
+
+# Or every post-submission step in one go: submit, wait, upload (upload needs options.archiveURI)
+./target/exit_certificate --config parameters.json --step submit-
 ```
 
 | Step | Name | What it does |
@@ -264,20 +267,21 @@ Steps SUBMIT, WAIT and UPLOAD are **not** part of the default pipeline — they 
 # Ranges (inclusive)
 ./target/exit_certificate --config parameters.json --step a-c     # a, b, c
 ./target/exit_certificate --config parameters.json --step g-      # g, h, i, sign (open range stops at sign)
+./target/exit_certificate --config parameters.json --step submit- # submit, wait, upload (starts past sign: runs to the end)
 ./target/exit_certificate --config parameters.json --step 0-wait  # every step, including submit and wait
 ```
 
 Each step reads its dependencies from the output directory (files written by prior steps).
 Spaces around commas are ignored. Execution stops at the first step that fails.
 
-Ranges use `from-to` (inclusive). An open-ended `from-` runs through `sign`; `submit` and `wait` are left out of open ranges and must be named explicitly (e.g. `0-wait` to run the entire flow end to end).
+Ranges use `from-to` (inclusive). An open-ended `from-` that starts at or before `sign` runs through `sign`: the post-submission steps (`submit`, `wait`, `upload`) are left out, so `f-` never submits by surprise, and must be named explicitly (e.g. `0-wait`, or `0-upload` to also archive the run). An open-ended range that starts at a post-submission step runs to the end: `submit-` = `submit,wait,upload`, `wait-` = `wait,upload`.
 
 ### CLI flags
 
 | Flag | Short | Default | Description |
 | :--: | :---: | :-----: | :---------: |
 | `--config` | `-c` | `parameters.json` | Path to the config file. |
-| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` runs through `sign` (e.g. `g-` → `g,h,i,sign`); `submit`/`wait` are excluded from open ranges and must be named explicitly — use `0-wait` to run every step. Valid names: `check`, `0`, `a`, `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`; `pending_claims` and `upload` (standalone, never part of a range); `recoveries` (delta mode only). The aliases `b` and `g` expand to their sub-steps and also work as range bounds. |
+| `--step` | — | `all` | Step(s) to run. Accepts `all`; a single step name; a comma-separated list (e.g. `h,i,sign`); or a range `from-to` (inclusive, e.g. `a-c` → `a,b,c`). An **open-ended** range `from-` starting at or before `sign` runs through `sign` (e.g. `g-` → `g,h,i,sign`): `submit`/`wait`/`upload` are excluded and must be named explicitly (e.g. `0-wait`, `0-upload`); one starting at `submit`, `wait` or `upload` runs to the end (`submit-` → `submit,wait,upload`). Valid names: `check`, `0`, `a`, `b`/`b1`/`b2`/`b3`, `c`–`f`, `g`/`g1`/`g2`, `h`, `i`, `sign`, `submit`, `wait`, `upload` (the last step of the order); `pending_claims` (standalone, never part of a range); `recoveries` (delta mode only). The aliases `b` and `g` expand to their sub-steps and also work as range bounds. |
 | `--verbose` | — | `false` | Enable debug logging. Without this flag only `info`, `warn` and `error` messages are shown. |
 
 ## Pipeline steps
@@ -570,9 +574,10 @@ A full run produces **one** certificate per chain. When more exits must be issue
 ```bash
 ./target/exit_certificate --config parameters.json                    # CHECK → F → G2 → H → I → SIGN
 ./target/exit_certificate --config parameters.json --step submit,wait # as in a regular run
+./target/exit_certificate --config parameters.json --step submit-    # or submit, wait, upload in one go
 ```
 
-In delta mode only `all` (the default), `recoveries`, `sign`, `submit`, `wait` and `upload` are available; the L2 scan steps (0, A, B, C, D, E) do not exist.
+In delta mode only `all` (the default), `recoveries`, `sign`, `submit`, `wait` and `upload` are available, also as lists and ranges (`submit-`, `sign-upload`); the L2 scan steps (0, A, B, C, D, E) do not exist.
 
 ### Delta exits file
 
@@ -677,6 +682,8 @@ an incomplete upload and is never read.
 ```bash
 # after --step submit,wait (and --step pending_claims, if you want it archived)
 ./target/exit_certificate --config parameters.toml --step upload
+# or submit, wait and upload in one go (pending_claims is standalone: run it before if you want it archived)
+./target/exit_certificate --config parameters.toml --step submit-
 ```
 
 Set `options.archiveURI` to the archive **base** (e.g. `gs://polygonlabs-zkevm-prod-let-archive/runs`). The

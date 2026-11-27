@@ -20,7 +20,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// stepUpload is the explicit-only step that archives the output directory in options.archiveURI.
+// stepUpload is the explicit-only post-submission step that archives the output directory in
+// options.archiveURI. It is the last step of orderedSteps, so `submit-` runs submit, wait, upload.
 const stepUpload = "upload"
 
 // uploadTmpDirName is the directory, inside the archive cache, holding each compressed file while it is

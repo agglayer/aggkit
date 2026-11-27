@@ -124,10 +124,12 @@ func Run(c *cli.Context) error {
 // depends on it), so it cannot be part of a range and `--step pending_claims` runs it alone.
 var orderedSteps = []string{
 	"check", "0", "a", "b1", "b2", "b3", "c", "d", "e", "f", "g1", "g2", "h", "i", "sign", stepSubmit, stepWait,
+	stepUpload,
 }
 
-// lastAutoStep is the implicit end for open ranges (X-).
-// "submit" and "wait" must always be specified explicitly.
+// lastAutoStep is the implicit end of an open range (X-) that starts at or before it, so `f-` never submits
+// by surprise. An open range that starts at a post-submission step (submit, wait, upload) runs to the end of
+// orderedSteps instead: `submit-` = submit, wait, upload.
 const lastAutoStep = "sign"
 
 // stepSubmit is the explicit-only step that sends the certificate to the agglayer.
@@ -137,8 +139,10 @@ const stepSubmit = "submit"
 const stepWait = "wait"
 
 // parseStepList splits a comma-separated step list, expanding range notation.
-// "f-i"  → ["f", "g", "h", "i"]
-// "f-"   → ["f", "g", "h", "i", "sign", "submit", "wait"]
+// "f-i"  → ["f", "g1", "g2", "h", "i"]
+// "f-"   → ["f", "g1", "g2", "h", "i", "sign"] (an open range starting before submit stops at sign)
+// "submit-" → ["submit", "wait", "upload"] (one starting at submit, wait or upload runs to the end)
+// "submit-upload", "sign-upload" → explicit ends may include the post-submission steps
 // "h, i, sign" → ["h", "i", "sign"]
 // "b"    → ["b1", "b2", "b3"] (alias for all three sub-steps)
 // "g"    → ["g1", "g2"] (alias for both sub-steps)
@@ -207,7 +211,7 @@ func expandStepRange(token string) ([]string, error) {
 		return nil, fmt.Errorf("unknown step in range %q: %q", token, from)
 	}
 
-	// Open range: stop at lastAutoStep (submit/wait require explicit opt-in).
+	// Open range: stop at lastAutoStep (the post-submission steps require explicit opt-in).
 	toIdx := -1
 	for i, s := range orderedSteps {
 		if s == lastAutoStep {
@@ -215,8 +219,8 @@ func expandStepRange(token string) ([]string, error) {
 			break
 		}
 	}
-	// When the range starts at or after submit/wait (i.e. past lastAutoStep), the user has
-	// explicitly opted into those steps, so an open range extends to the last step instead.
+	// When the range starts at a post-submission step (past lastAutoStep: submit, wait, upload), the user has
+	// explicitly opted into them, so an open range extends to the last step (upload) instead.
 	if fromIdx > toIdx {
 		toIdx = len(orderedSteps) - 1
 	}

@@ -314,9 +314,9 @@ func runDelta(ctx context.Context, cfg *Config) error {
 	return nil
 }
 
-// runDeltaSteps runs the delta pipeline for --step all, or the post-generation steps (sign, submit,
-// wait) that work off the delta certificate in the output dir. The L2 scan steps do not exist in delta
-// mode.
+// runDeltaSteps runs the delta pipeline for --step all, or the post-generation steps (sign, submit, wait,
+// upload; lists and ranges such as `submit-` too, see deltaStepList) that work off the delta certificate in
+// the output dir. The L2 scan steps do not exist in delta mode.
 func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 	wholeDelta := step == "" || step == "all"
 	if wholeDelta || step == stepRecoveries {
@@ -331,17 +331,9 @@ func runDeltaSteps(ctx context.Context, cfg *Config, step string) error {
 	if step == stepRecoveries { // standalone: it only prepares the delta exits file and the balance state
 		return runRecoveries(cfg)
 	}
-	steps, err := parseStepList(step)
+	steps, err := deltaStepList(step)
 	if err != nil {
 		return err
-	}
-	for _, s := range steps {
-		switch s {
-		case lastAutoStep, stepSubmit, stepWait, stepUpload: // lastAutoStep is "sign"
-		default:
-			return fmt.Errorf("step %q is not available with options.deltaMode "+
-				"(only all, recoveries, sign, submit, wait, upload)", s)
-		}
 	}
 	for _, s := range steps {
 		if err := runSingleStep(ctx, s, cfg); err != nil {
@@ -796,4 +788,23 @@ func checkDeltaUnsettledExitsWith(
 	}
 	result.UnsettledExitsStatus = okStatus
 	log.Infof("✅ agglayer settled LER %s is the previous certificate's new_local_exit_root", settledLER.Hex())
+}
+
+// deltaStepList expands a delta --step value other than all/recoveries (lists and ranges, e.g. `submit-` =
+// submit, wait, upload, or `sign-upload`) and checks that every step works off the delta certificate in the
+// output dir: sign and the post-submission steps. The L2 scan steps do not exist in delta mode.
+func deltaStepList(step string) ([]string, error) {
+	steps, err := parseStepList(step)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range steps {
+		switch s {
+		case lastAutoStep, stepSubmit, stepWait, stepUpload: // lastAutoStep is "sign"
+		default:
+			return nil, fmt.Errorf("step %q is not available with options.deltaMode "+
+				"(only all, recoveries, sign, submit, wait, upload, or a range of the last four)", s)
+		}
+	}
+	return steps, nil
 }
