@@ -84,6 +84,16 @@ func TestSelectPreviousRunFiles(t *testing.T) {
 
 	_, err = selectPreviousRunFiles(manifest(fileSignedCertificate, fileStepWaitResult))
 	require.ErrorContains(t, err, fileStepGLiteDB)
+
+	// The recoveries state a delta carries to the next one: the ledger, the per-contract budget and the L2
+	// target block of the first run (in recoveries/), plus the root step-0-l2_target_block.json.
+	files, err = selectPreviousRunFiles(manifest(fileFullCertificate, fileStepWaitResult, fileStepGLiteDB,
+		fileStep0TargetBlock, dirRecoveries+"/"+fileRecoveriesLedger, dirRecoveries+"/"+fileRecoveriesSCFunds,
+		dirRecoveries+"/"+fileStep0TargetBlock))
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{fileFullCertificate, fileStepWaitResult, fileStepGLiteDB, fileStep0TargetBlock,
+		dirRecoveries + "/" + fileRecoveriesLedger, dirRecoveries + "/" + fileRecoveriesSCFunds,
+		dirRecoveries + "/" + fileStep0TargetBlock}, files)
 }
 
 // TestArchiveRoundTrip archives a settled run with --step upload and uses the archive as the previousRun of
