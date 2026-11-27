@@ -8,19 +8,13 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
-	"github.com/klauspost/compress/zstd"
 )
 
-const (
-	// dirMetaFiles is the subdirectory of options.outputDir holding the options.archiveMetaFiles copies.
-	dirMetaFiles = "metafiles"
-	// metaFileExt is appended to the basename of every copied meta file (they are stored zstd-compressed).
-	metaFileExt = ".zst"
-)
+// dirMetaFiles is the subdirectory of options.outputDir where --step upload copies options.archiveMetaFiles.
+const dirMetaFiles = "metafiles"
 
 // validateArchiveMetaFiles checks options.archiveMetaFiles: no empty entry and unique basenames (every file
-// is copied as metafiles/<basename>.zst, so two files with the same name would overwrite each other).
+// is copied as metafiles/<basename>, so two files with the same name would overwrite each other).
 func validateArchiveMetaFiles(files []string) error {
 	seen := make(map[string]string, len(files))
 	for i, f := range files {
@@ -30,45 +24,33 @@ func validateArchiveMetaFiles(files []string) error {
 		base := filepath.Base(filepath.Clean(f))
 		if prev, ok := seen[base]; ok {
 			return fmt.Errorf("invalid options.archiveMetaFiles: %q and %q have the same file name %q "+
-				"(both would be copied to %s/%s%s)", prev, f, base, dirMetaFiles, base, metaFileExt)
+				"(both would be copied to %s/%s)", prev, f, base, dirMetaFiles, base)
 		}
 		seen[base] = f
 	}
 	return nil
 }
 
-// metaFileName is the path, relative to options.outputDir, of the copy of the meta file src.
-func metaFileName(src string) string {
-	return filepath.Join(dirMetaFiles, filepath.Base(filepath.Clean(src))+metaFileExt)
-}
-
-// copyMetaFiles copies every options.archiveMetaFiles entry, zstd-compressed, into
-// <outputDir>/metafiles/<basename>.zst (files there that are no longer listed are removed), so they are part
-// of the run's result and --step upload archives them with the rest of the output dir.
-// When the output dir was already archived (archive-manifest.json present) nothing is touched: the archive
-// is write-once, so the copies it holds are the run's meta files.
+// copyMetaFiles copies every options.archiveMetaFiles entry, as is, into <outputDir>/metafiles/<basename>
+// (files there that are no longer listed are removed). runUpload calls it right before collecting the files
+// to archive, so the meta files are uploaded, zstd-compressed once, like any other file of the run.
 func copyMetaFiles(opts Options) error {
 	if len(opts.ArchiveMetaFiles) == 0 {
 		return nil
 	}
-	outDir := opts.OutputDir
-	if fileExists(filepath.Join(outDir, runarchive.ManifestFile)) {
-		log.Warnf("⚠️  %s was already archived (--step %s): options.archiveMetaFiles are not copied again "+
-			"(the archive keeps the %s/ it was uploaded with)", outDir, stepUpload, dirMetaFiles)
-		return nil
-	}
-	dir := filepath.Join(outDir, dirMetaFiles)
+	dir := filepath.Join(opts.OutputDir, dirMetaFiles)
 	if err := os.MkdirAll(dir, dirPermissions); err != nil {
 		return fmt.Errorf("create %s: %w", dir, err)
 	}
 	keep := make(map[string]bool, len(opts.ArchiveMetaFiles))
 	for _, src := range opts.ArchiveMetaFiles {
-		rel := metaFileName(src)
-		if err := compressMetaFile(src, filepath.Join(outDir, rel)); err != nil {
+		name := filepath.Base(filepath.Clean(src))
+		dst := filepath.Join(dir, name)
+		if err := copyMetaFile(src, dst); err != nil {
 			return fmt.Errorf("options.archiveMetaFiles: %w", err)
 		}
-		keep[filepath.Base(rel)] = true
-		log.Infof("Meta file %s copied to %s", src, filepath.Join(outDir, rel))
+		keep[name] = true
+		log.Infof("Meta file %s copied to %s", src, dst)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -87,8 +69,8 @@ func copyMetaFiles(opts Options) error {
 	return nil
 }
 
-// compressMetaFile writes src, zstd-compressed, to dst (through dst+".partial", renamed once complete).
-func compressMetaFile(src, dst string) (err error) {
+// copyMetaFile copies src to dst (through dst+".partial", renamed once complete).
+func copyMetaFile(src, dst string) (err error) {
 	info, err := os.Stat(src)
 	if err != nil {
 		return fmt.Errorf("meta file %s: %w", src, err)
@@ -113,16 +95,8 @@ func compressMetaFile(src, dst string) (err error) {
 			_ = os.Remove(tmp)
 		}
 	}()
-	enc, err := zstd.NewWriter(out)
-	if err != nil {
-		return fmt.Errorf("zstd writer for %s: %w", src, err)
-	}
-	if _, err := io.Copy(enc, in); err != nil {
-		_ = enc.Close()
-		return fmt.Errorf("compress %s: %w", src, err)
-	}
-	if err := enc.Close(); err != nil {
-		return fmt.Errorf("compress %s: %w", src, err)
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy %s: %w", src, err)
 	}
 	if err := out.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", tmp, err)

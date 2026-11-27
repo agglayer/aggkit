@@ -3,30 +3,14 @@ package exit_certificate
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive"
 	"github.com/agglayer/aggkit/tools/exit_certificate/runarchive/archivetest"
-	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 )
-
-// readMetaFile decompresses a metafiles/<name>.zst copy.
-func readMetaFile(t *testing.T, path string) string {
-	t.Helper()
-	f, err := os.Open(path)
-	require.NoError(t, err)
-	defer f.Close()
-	dec, err := zstd.NewReader(f)
-	require.NoError(t, err)
-	defer dec.Close()
-	data, err := io.ReadAll(dec)
-	require.NoError(t, err)
-	return string(data)
-}
 
 func TestArchiveMetaFilesConfig(t *testing.T) {
 	t.Parallel()
@@ -61,20 +45,26 @@ func TestCopyMetaFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(notes, []byte("# run notes"), 0o600))
 	require.NoError(t, os.WriteFile(params, []byte("x = 1"), 0o600))
 	out := t.TempDir()
+	read := func(name string) string {
+		data, err := os.ReadFile(filepath.Join(out, dirMetaFiles, name))
+		require.NoError(t, err)
+		return string(data)
+	}
 
 	// No meta files: nothing is created.
 	require.NoError(t, copyMetaFiles(Options{OutputDir: out}))
 	require.NoDirExists(t, filepath.Join(out, dirMetaFiles))
 
+	// Copied as is: the upload compresses them, once, like any other file.
 	require.NoError(t, copyMetaFiles(Options{OutputDir: out, ArchiveMetaFiles: []string{notes, params}}))
-	require.Equal(t, "# run notes", readMetaFile(t, filepath.Join(out, dirMetaFiles, "notes.md.zst")))
-	require.Equal(t, "x = 1", readMetaFile(t, filepath.Join(out, dirMetaFiles, "params.toml.zst")))
+	require.Equal(t, "# run notes", read("notes.md"))
+	require.Equal(t, "x = 1", read("params.toml"))
 
 	// A re-run refreshes the copies and drops the ones no longer listed.
 	require.NoError(t, os.WriteFile(notes, []byte("# updated"), 0o600))
 	require.NoError(t, copyMetaFiles(Options{OutputDir: out, ArchiveMetaFiles: []string{notes}}))
-	require.Equal(t, "# updated", readMetaFile(t, filepath.Join(out, dirMetaFiles, "notes.md.zst")))
-	require.NoFileExists(t, filepath.Join(out, dirMetaFiles, "params.toml.zst"))
+	require.Equal(t, "# updated", read("notes.md"))
+	require.NoFileExists(t, filepath.Join(out, dirMetaFiles, "params.toml"))
 
 	// Missing files and directories are errors; no .partial is left behind.
 	err := copyMetaFiles(Options{OutputDir: out, ArchiveMetaFiles: []string{filepath.Join(src, "missing")}})
@@ -86,28 +76,27 @@ func TestCopyMetaFiles(t *testing.T) {
 	for _, e := range entries {
 		require.NotContains(t, e.Name(), ".partial")
 	}
-
-	// An already archived output dir is left untouched (the archive is write-once).
-	require.NoError(t, os.WriteFile(filepath.Join(out, runarchive.ManifestFile), []byte("{}"), 0o600))
-	require.NoError(t, os.WriteFile(notes, []byte("# after upload"), 0o600))
-	require.NoError(t, copyMetaFiles(Options{OutputDir: out, ArchiveMetaFiles: []string{notes}}))
-	require.Equal(t, "# updated", readMetaFile(t, filepath.Join(out, dirMetaFiles, "notes.md.zst")))
 }
 
-// TestUploadArchivesMetaFiles checks that the metafiles/ copies are archived with the run.
+// TestUploadArchivesMetaFiles checks that --step upload copies the meta files into metafiles/ and archives
+// them compressed once (an already compressed file is compressed again, as any other file).
 func TestUploadArchivesMetaFiles(t *testing.T) {
 	t.Parallel()
 	dir, _ := writePreviousRun(t, fileSignedCertificate, 3, nil)
-	notes := filepath.Join(t.TempDir(), "notes.md")
+	srcDir := t.TempDir()
+	notes := filepath.Join(srcDir, "notes.md")
+	kit := filepath.Join(srcDir, "recoveries.tgz")
 	require.NoError(t, os.WriteFile(notes, []byte("# run notes"), 0o600))
+	require.NoError(t, os.WriteFile(kit, []byte("tgz bytes"), 0o600))
 
 	objs := &archivetest.Objects{}
+	open := archivetest.Opener(t, objs)
 	upCfg := &Config{L2NetworkID: deltaTestNetworkID, Options: Options{
 		OutputDir: dir, ArchiveURI: testArchiveURI, ArchiveCacheDir: t.TempDir(),
-		ArchiveMetaFiles: []string{notes},
+		ArchiveMetaFiles: []string{notes, kit},
 	}}
-	require.NoError(t, copyMetaFiles(upCfg.Options))
-	require.NoError(t, runUpload(context.Background(), upCfg, archivetest.Opener(t, objs)))
+	require.NoError(t, runUpload(context.Background(), upCfg, open))
+	require.FileExists(t, filepath.Join(dir, dirMetaFiles, "notes.md"), "copied, uncompressed, by the upload")
 
 	loc, err := runarchive.ParseURI(testRunURI)
 	require.NoError(t, err)
@@ -115,6 +104,16 @@ func TestUploadArchivesMetaFiles(t *testing.T) {
 	require.True(t, ok)
 	var m runarchive.Manifest
 	require.NoError(t, json.Unmarshal(raw, &m))
-	_, ok = m.File(dirMetaFiles + "/notes.md" + metaFileExt)
-	require.True(t, ok, "metafiles/ is part of the archived run")
+	for _, name := range []string{"notes.md", "recoveries.tgz"} {
+		entry, ok := m.File(dirMetaFiles + "/" + name)
+		require.True(t, ok, "metafiles/%s is part of the archived run", name)
+		require.Equal(t, dirMetaFiles+"/"+name+".zst", entry.Object, "compressed once")
+	}
+
+	// Once archived, a changed meta file is not copied again: the re-run stays a no-op.
+	require.NoError(t, os.WriteFile(notes, []byte("# changed after upload"), 0o600))
+	require.NoError(t, runUpload(context.Background(), upCfg, open))
+	data, err := os.ReadFile(filepath.Join(dir, dirMetaFiles, "notes.md"))
+	require.NoError(t, err)
+	require.Equal(t, "# run notes", string(data))
 }

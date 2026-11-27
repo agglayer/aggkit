@@ -147,9 +147,10 @@ type Options struct {
 	// config file directory.
 	ArchiveCacheDir string `json:"archiveCacheDir"`
 	// ArchiveMetaFiles are extra files that document the run (the config, notes, the inputs it was built
-	// from...). Every run copies them, zstd-compressed, into <OutputDir>/metafiles/<basename>.zst, so they
-	// are part of the run's result and --step upload archives them with it. Basenames must be unique.
-	// Relative paths resolve from the config file directory. Never list files holding secrets.
+	// from...) that --step upload archives with the run: it copies them, as they are, into
+	// <OutputDir>/metafiles/<basename> right before uploading, and they are stored zstd-compressed like every
+	// other file of the run. Basenames must be unique. Relative paths resolve from the config file directory.
+	// Never list files holding secrets.
 	ArchiveMetaFiles []string `json:"archiveMetaFiles"`
 	// DeltaExitsFile is the JSON file with the new bridge exits (see DeltaExitsFile). Required with
 	// DeltaMode. Relative paths resolve from the config file directory.

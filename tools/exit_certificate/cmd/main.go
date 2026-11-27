@@ -72,8 +72,8 @@ Pipeline steps (run in order by default):
          compressed with zstd, plus a manifest of checksums; never overwriting,
          re-running resumes a partial upload. A delta's options.previousRun
          can then be that URI: the run is downloaded and verified before use.
-         options.archiveMetaFiles are copied (zstd) into <outputDir>/metafiles/
-         on every run, so they are archived with it.
+         options.archiveMetaFiles are copied into <outputDir>/metafiles/ right
+         before uploading, so they are archived (compressed) with the run.
 
   RECOVERIES
          Delta mode only (options.deltaMode), standalone (--step recoveries). Turns verified

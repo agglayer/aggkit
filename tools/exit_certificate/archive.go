@@ -156,6 +156,16 @@ func runUpload(ctx context.Context, cfg *Config, open archiveOpener) error {
 	}
 	loc := base.Run(header.NetworkID, header.Height)
 
+	// The meta files join the run here, right before it is archived. Once uploaded (local manifest copy
+	// present) they are not copied again: the archive is write-once and holds the copies it was made with.
+	if fileExists(filepath.Join(dir, runarchive.ManifestFile)) {
+		if len(cfg.Options.ArchiveMetaFiles) > 0 {
+			log.Warnf("⚠️  %s was already archived: options.archiveMetaFiles are not copied again", dir)
+		}
+	} else if err := copyMetaFiles(cfg.Options); err != nil {
+		return err
+	}
+
 	files, err := runarchive.CollectFiles(dir, uploadSkip(cfg))
 	if err != nil {
 		return err
