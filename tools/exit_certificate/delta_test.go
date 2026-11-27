@@ -730,6 +730,14 @@ func TestDeltaStepList(t *testing.T) {
 	}
 	_, err := deltaStepList("nope-")
 	require.ErrorContains(t, err, "unknown step")
+
+	// recoveries is standalone: it never joins a list or a range (it only prepares the delta exits file), and
+	// runDeltaSteps dispatches it before deltaStepList.
+	_, err = deltaStepList("recoveries, sign")
+	require.ErrorContains(t, err, "not available with options.deltaMode")
+	err = runDeltaSteps(context.Background(), &Config{Options: Options{DeltaMode: true, PreviousRun: t.TempDir(),
+		OutputDir: t.TempDir()}}, stepRecoveries)
+	require.ErrorContains(t, err, "requires options.recoveriesPath")
 }
 
 func TestRunDeltaRejectsSameOutputAndPreviousDir(t *testing.T) {
