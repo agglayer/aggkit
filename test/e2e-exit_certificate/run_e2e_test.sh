@@ -16,10 +16,12 @@ Options:
   -d, --delta             Delta scenario: the first certificate is generated with skipSCLockedValue
                           (ETH locked in two smart contracts is left behind), then two delta
                           certificates chained on top recover one contract each (two verified
-                          recoveries applied with `--step recoveries`), and every exit — old and
-                          new — is claimed against the latest certificate. Each settled run is
-                          archived (--step upload) in a GCS emulator and each delta reads its
-                          previous run from that archive.
+                          recoveries applied with --step recoveries), and a third delta recovers
+                          Circle's USDC.e with bridge Message exits (a kit case in the recovery.json
+                          v1 format). Every exit — old and new — is claimed against the latest
+                          certificate. Each settled run is archived (--step upload) in a GCS
+                          emulator, each delta reads its previous run from that archive, and the
+                          claimer serves it from there in follow mode.
   -h, --help              Show this help message and exit.
 EOF
 }
@@ -88,6 +90,11 @@ run_quiet "${SCRIPT_DIR}/45-check_exit_certificate.sh"
 log_info "⏳ Check pending L2 -> L1 bridges emitted before the certificate (PENDING_CLAIMS step)"
 run_quiet "${SCRIPT_DIR}/46-check_pending_bridges.sh"
 
+if [[ "${DELTA_MODE}" == "1" ]]; then
+    log_info "🙅 Check Circle USDC.e is reported and not paid by the first certificate"
+    run_quiet "${SCRIPT_DIR}/47-check_circle_usdc_not_paid.sh"
+fi
+
 log_info "📤 Submit exit certificate"
 run_quiet "${SCRIPT_DIR}/50-submit_exit_certificate.sh"
 
@@ -111,15 +118,46 @@ if [[ "${DELTA_MODE}" == "1" ]]; then
     log_info "🧩 Delta 2: recovery of the second locked contract, chained on delta 1"
     run_quiet "${SCRIPT_DIR}/52-generate_delta_certificate.sh" 2
 
-    # The claimer serves the full certificate of the last delta (every exit, latest root). The delta
-    # output has no EOA list: claim for the EOAs of the first run (old exits); the deltas' exits are claimed
-    # because claim-all.sh also claims every L1 destination of exit-certificate-full.json.
+    log_info "📦 Archive delta 2"
+    run_quiet "${SCRIPT_DIR}/51-archive_run.sh" "${AGGKIT_TMP}/exit_certificate-kurtosis-delta-2.json" \
+        "${ARCHIVE_URI_BASE}"
+
+    # The claimer starts on delta 2, served from the archive, in follow mode: when delta 3 is archived it
+    # must move to it by itself. It is stopped when the script ends.
     AGGKIT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
     FIRST_OUTPUT_REL="$(jq -r '.options.outputDir' "${AGGKIT_DIR}/tmp/exit_certificate-kurtosis.json")"
+    FIRST_EOA_FILE="${AGGKIT_DIR}/tmp/${FIRST_OUTPUT_REL}/step-b-eoa-balances.json"
+    DELTA_3_CONFIG="${AGGKIT_TMP}/exit_certificate-kurtosis-delta-3.json"
+    trap '"${SCRIPT_DIR}/61-claimer_follow.sh" stop; "${SCRIPT_DIR}/51-archive_run.sh" stop' EXIT
+    log_info "🛰️ Start the claimer on delta 2, from the archive, in follow mode"
+    run_quiet "${SCRIPT_DIR}/61-claimer_follow.sh" start "${AGGKIT_TMP}/exit_certificate-kurtosis-delta-2.json"
+    run_quiet "${SCRIPT_DIR}/62-check_circle_usdc_claims.sh" not-yet
+
+    log_info "🧩 Delta 3: Circle USDC.e recovered with Message exits (kit case in the recovery.json v1 format), chained on delta 2"
+    run_quiet "${SCRIPT_DIR}/53-generate_circle_usdc_delta.sh"
+
+    log_info "📦 Archive delta 3"
+    run_quiet "${SCRIPT_DIR}/51-archive_run.sh" "${DELTA_3_CONFIG}" "${ARCHIVE_URI_BASE}"
+
+    log_info "🛰️ The running claimer picks up delta 3 from the archive"
+    DELTA_3_OUTPUT_REL="$(jq -r '.options.outputDir' "${DELTA_3_CONFIG}")"
+    run_quiet "${SCRIPT_DIR}/61-claimer_follow.sh" wait-height \
+        "$(jq -r '.height' "${AGGKIT_TMP}/${DELTA_3_OUTPUT_REL}/exit-certificate-full.json")"
+    EXIT_CERT_CONFIG="${DELTA_3_CONFIG}" EOA_FILE="${FIRST_EOA_FILE}" \
+        run_quiet "${SCRIPT_DIR}/62-check_circle_usdc_claims.sh" listed
+
+    # The claimer now serves the full certificate of the last delta (every exit, latest root). The delta
+    # output has no EOA list: claim for the holders of delta 3 (each Message exit through its beneficiary)
+    # and the EOAs of the first run (old exits); the exits of deltas 1 and 2 are claimed because
+    # claim-all.sh also claims every L1 destination of exit-certificate-full.json.
     log_info "Claim funds (old and new exits, against the latest certificate)"
-    EXIT_CERT_CONFIG="${AGGKIT_DIR}/tmp/exit_certificate-kurtosis-delta-2.json" \
-    EOA_FILE="${AGGKIT_DIR}/tmp/${FIRST_OUTPUT_REL}/step-b-eoa-balances.json" \
+    CLAIMER_ALREADY_RUNNING=1 \
+    EXIT_CERT_CONFIG="${DELTA_3_CONFIG}" \
+    EOA_FILE="${AGGKIT_TMP}/exit_certificate-e2e-claim-addresses.json" \
         run_quiet "${SCRIPT_DIR}/60-claim_exit_certificate_funds.sh"
+
+    log_info "💵 Check the Circle USDC claims on L1 (claimMessage → L1Escrow pays the holders)"
+    EXIT_CERT_CONFIG="${DELTA_3_CONFIG}" run_quiet "${SCRIPT_DIR}/62-check_circle_usdc_claims.sh" claimed
 
     # The owners are fresh L1 addresses: once claimed, each must hold exactly its recovered amount.
     log_info "💰 Check the L1 balance of each recovery's owner"

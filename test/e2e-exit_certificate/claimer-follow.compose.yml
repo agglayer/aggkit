@@ -1,0 +1,15 @@
+# Override of tools/exit_certificate_claimer/docker/docker-compose.yml for the e2e (61-claimer_follow.sh):
+# the claimer serves the run archive of a GCS emulator in follow mode, with the message routes of the
+# Circle USDC scenario.
+#
+# The emulator listens on 127.0.0.1 of the host, so the container uses the host network (the published
+# port of the base file is then not needed: the claimer binds CLAIMER_PORT on the host directly).
+services:
+  exit-certificate-claimer:
+    network_mode: host
+    ports: !reset []
+    environment:
+      STORAGE_EMULATOR_HOST: "${STORAGE_EMULATOR_HOST}"
+      CLAIMER_RUN_SOURCE_HEIGHT: "${CLAIMER_RUN_SOURCE_HEIGHT}"
+      CLAIMER_FOLLOW_INTERVAL_SECONDS: "${CLAIMER_FOLLOW_INTERVAL_SECONDS}"
+      CLAIMER_MESSAGE_ROUTES: "${CLAIMER_MESSAGE_ROUTES}"
