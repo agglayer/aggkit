@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Delta 3 of the --delta scenario: the recovery of Circle's USDC.e, with bridge MESSAGE exits
-# (agglayer/issues#298). It reproduces the mechanism of the real recovery package (one kit case, a Safe
+# Delta 3 of the --delta scenario: the recovery of Circle's USDC.e, with bridge MESSAGE exits.
+# It reproduces the mechanism of the real recovery package (one kit case, a Safe
 # transaction that upgrades ZkMinterBurner and pays every listed holder) on the contracts
 # 21-prepare_circle_usdc.sh deployed.
 #

@@ -37,7 +37,7 @@ ZKEVM_REPO="https://github.com/0xPolygonHermez/zkevm-contracts"
 ZKEVM_LXLY_COMMIT="b737362078215bfcb3973f9e8a4183f711c8738a" # usdc-lxly lib/zkevm-contracts
 SAFE_REPO="https://github.com/safe-global/safe-smart-account"
 SAFE_COMMIT="186a21a74b327f17fc41217a927dea7064f74604" # tag v1.3.0
-# Recovery package (agglayer/protocol-team-kanban#819, v2; no public repository): contracts/src/ sources.
+# Circle USDC recovery package (v2, not publicly available; no repository to pin): contracts/src/ sources.
 PACKAGE_PAYOUT_SHA256="ed2e8d373cf414adaf75bc5bba00befc88182f91de61f96d82d3c37fe8aaf40b" # ZkMinterBurnerPayout.sol
 PACKAGE_BURN_SHA256="2918cd7f869a345fd5389905cc5a0d4f08e64e9be432c0752052e640687fd17a"   # UsdcRecoveryBurn.sol
 

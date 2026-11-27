@@ -1,7 +1,7 @@
 #!/bin/bash
 # zkEVM Circle USDC (USDC.e, usdc-lxly): payout of the listed EOA holders through an upgrade of
-# ZkMinterBurner (agglayer/issues#298 e2e). Adapted from the move.sh.tpl of the recovery package
-# (agglayer/protocol-team-kanban#819, v2): same steps and checks, with every network-specific value as a placeholder
+# ZkMinterBurner (exit_certificate delta e2e). Adapted from the move.sh.tpl of the Circle USDC recovery package
+# (v2, not publicly available): same steps and checks, with every network-specific value as a placeholder
 # (README.md, "move.sh.tpl"). Differences from the original: the addresses, the Safe nonce and
 # threshold, the executor and approvers come from the e2e network; gas limits are estimated by
 # cast instead of fixed; each transaction is sent with --async and its receipt polled; after
